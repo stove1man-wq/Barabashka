@@ -1,4 +1,4 @@
-# Unity
+﻿# Unity
 [Ll]ibrary/
 [Tt]emp/
 [Oo]bj/
@@ -23,11 +23,11 @@ Recordings/
 # Plastic SCM
 .plastic/
 
-# ?????? Android
+# Android builds
 *.apk
 *.aab
 *.unitypackage
 
-# ??????
+# Misc
 .DS_Store
 Thumbs.db
