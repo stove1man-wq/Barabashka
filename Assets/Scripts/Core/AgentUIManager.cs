@@ -153,7 +153,7 @@ public class AgentUIManager : MonoBehaviour
         _inputField.lineType = InputField.LineType.MultiLineNewline;
         _inputField.characterLimit = 4000;
         RectTransform inputRect = inputObject.GetComponent<RectTransform>();
-        Stretch(inputRect, new Vector2(0.035f, 0.12f), new Vector2(0.83f, 0.88f),
+        Stretch(inputRect, new Vector2(0.035f, 0.12f), new Vector2(0.67f, 0.88f),
             Vector2.zero, Vector2.zero);
 
         Text inputText = CreateText("InputText", inputObject.transform, "", 22,
@@ -171,7 +171,7 @@ public class AgentUIManager : MonoBehaviour
         Button sendButton = CreateButton("SendButton", inputPanel.transform, "↑",
             new Color(0.12f, 0.48f, 0.82f, 1f), 34);
         RectTransform sendRect = sendButton.GetComponent<RectTransform>();
-        sendRect.anchorMin = new Vector2(0.85f, 0.12f);
+        sendRect.anchorMin = new Vector2(0.87f, 0.12f);
         sendRect.anchorMax = new Vector2(0.97f, 0.88f);
         sendRect.offsetMin = Vector2.zero;
         sendRect.offsetMax = Vector2.zero;
@@ -180,8 +180,8 @@ public class AgentUIManager : MonoBehaviour
         Button stopButton = CreateButton("StopStrip", canvasObject.transform, "■\n\nС\nТ\nО\nП",
             new Color(0.42f, 0.12f, 0.17f, 0.94f), 20);
         RectTransform stopRect = stopButton.GetComponent<RectTransform>();
-        stopRect.anchorMin = new Vector2(0.92f, 0.02f);
-        stopRect.anchorMax = new Vector2(0.985f, 0.985f);
+        stopRect.anchorMin = new Vector2(0.92f, 0.10f);
+        stopRect.anchorMax = new Vector2(0.985f, 0.90f);
         stopRect.offsetMin = Vector2.zero;
         stopRect.offsetMax = Vector2.zero;
         stopButton.onClick.AddListener(() =>
