@@ -13,7 +13,6 @@ public class AgentCommandRouter : MonoBehaviour
 
     private void Start()
     {
-        // Инициализируем UI менеджер в Start, чтобы кэш Bootstrap гарантированно успел собраться
         _uiManager = GetComponent<AgentUIManager>();
         _avatar = GetComponent<AvatarVisualizer>();
     }
@@ -26,73 +25,67 @@ public class AgentCommandRouter : MonoBehaviour
             return;
         }
 
-        // Перехват системных команд Тулсета
-        if (brainResponse.StartsWith("COMMAND:"))
+        if (brainResponse.StartsWith("COMMAND:", StringComparison.Ordinal))
         {
-            if (brainResponse == "COMMAND:TIME")
+            string command = brainResponse.Substring("COMMAND:".Length);
+            if (command == "TIME")
             {
-                string currentTime = AgentToolset.GetCurrentSystemTime();
-                Debug.Log("[Agent] Текущее системное время: " + currentTime);
-                
-                // Прямой вывод на экран через закэшированную ссылку
-                if (_uiManager != null)
-                {
-                    _uiManager.UpdateResponseText("Текущее точное время: " + currentTime);
-                }
-                else
-                {
-                    // Подстраховка, если компонент искался медленно
-                    _uiManager = GetComponent<AgentUIManager>();
-                    if (_uiManager != null) _uiManager.UpdateResponseText("Текущее точное время: " + currentTime);
-                }
-
+                ShowResponse("Текущее точное время: " + AgentToolset.GetCurrentSystemTime());
                 PlayAnimation("LookUp");
             }
-            else if (brainResponse.StartsWith("COMMAND:OPEN_URL|"))
+            else if (command.StartsWith("OPEN_URL|", StringComparison.Ordinal))
             {
-                string[] parts = brainResponse.Split('|');
-                if (parts.Length > 1)
+                string url = command.Substring("OPEN_URL|".Length);
+                if (Uri.TryCreate(url, UriKind.Absolute, out Uri parsed) &&
+                    (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps))
                 {
-                    string url = parts[1];
-                    AgentToolset.OpenWebBrowser(url);
+                    AgentToolset.OpenWebBrowser(parsed.AbsoluteUri);
+                    ShowResponse("Открываю браузер: " + parsed.Host);
                     PlayAnimation("Greet");
                 }
+                else ShowResponse("Не удалось открыть ссылку: допустимы только HTTP и HTTPS.");
             }
+            else if (command.StartsWith("TASK_ADD|", StringComparison.Ordinal))
+                ShowResponse(AgentToolset.AddTask(command.Substring("TASK_ADD|".Length)));
+            else if (command == "TASK_LIST")
+                ShowResponse(AgentToolset.ListTasks());
+            else if (command.StartsWith("TASK_DONE|", StringComparison.Ordinal))
+                ShowResponse(AgentToolset.CompleteTask(command.Substring("TASK_DONE|".Length)));
+            else if (command.StartsWith("TASK_DELETE|", StringComparison.Ordinal))
+                ShowResponse(AgentToolset.DeleteTask(command.Substring("TASK_DELETE|".Length)));
+            else
+                ShowResponse("Команда не поддерживается: " + command);
+
+            PlayAnimation("Idle");
             return;
         }
 
-        // Стандартные текстовые ответы изолированного мозга
+        ShowResponse(brainResponse);
         if (brainResponse.IndexOf("привет", StringComparison.OrdinalIgnoreCase) >= 0 ||
             brainResponse.IndexOf("рад помочь", StringComparison.OrdinalIgnoreCase) >= 0)
-        {
-            // Выводим ответ мозга на экран
-            if (_uiManager != null) _uiManager.UpdateResponseText(brainResponse);
             PlayAnimation("Greet");
-        }
         else if (brainResponse.IndexOf("погода", StringComparison.OrdinalIgnoreCase) >= 0)
-        {
-            // Выводим ответ мозга на экран
-            if (_uiManager != null) _uiManager.UpdateResponseText(brainResponse);
             PlayAnimation("LookUp");
-        }
         else
-        {
-            // Выводим ответ мозга на экран
-            if (_uiManager != null) _uiManager.UpdateResponseText(brainResponse);
             PlayAnimation("Idle");
-        }
+    }
+
+    private void ShowResponse(string text)
+    {
+        if (_uiManager == null) _uiManager = GetComponent<AgentUIManager>();
+        if (_uiManager != null) _uiManager.UpdateResponseText(text);
+        else Debug.LogWarning("[AgentCommandRouter] AgentUIManager is unavailable. Response: " + text);
     }
 
     private void PlayAnimation(string animName)
     {
-        // Вызываем соответствующий метод аватара (корутины)
         if (_avatar != null)
         {
             switch (animName)
             {
                 case "LookUp": _avatar.TriggerLookUp(); break;
-                case "Greet":  _avatar.TriggerGreet(); break;
-                case "Idle":   _avatar.TriggerIdle(); break;
+                case "Greet": _avatar.TriggerGreet(); break;
+                case "Idle": _avatar.TriggerIdle(); break;
             }
         }
         Debug.Log("[Avatar] Play animation: " + animName);
