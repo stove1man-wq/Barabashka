@@ -15,6 +15,7 @@ public class AgentCommandRouter : MonoBehaviour
     {
         // Инициализируем UI менеджер в Start, чтобы кэш Bootstrap гарантированно успел собраться
         _uiManager = GetComponent<AgentUIManager>();
+        _avatar = GetComponent<AvatarVisualizer>();
     }
 
     public void RouteCommand(string brainResponse)
