@@ -1,0 +1,14 @@
+{
+    "name": "Barabashka.Composition",
+    "rootNamespace": "Barabashka.Composition",
+    "references": [ "Barabashka.Contracts", "Barabashka.App", "Barabashka.Core", "Barabashka.Voice.Whisper" ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

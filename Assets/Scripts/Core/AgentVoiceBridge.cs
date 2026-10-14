@@ -72,7 +72,7 @@ public class AgentVoiceBridge : MonoBehaviour
             try
             {
                 string safeText = text.Replace("'", "''").Replace("\"", "`\"");
-                string psScript = "Add-Type -AssemblyName System.Speech; \$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; \(synth.Rate = " + _ttsRate + "; \)synth.Volume = " + _ttsVolume + "; " + (string.IsNullOrEmpty(_ttsVoiceName) ? "" : "\(synth.SelectVoice('" + _ttsVoiceName + "');") + " \)synth.Speak('" + safeText + "')";
+                string psScript = "Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Rate = " + _ttsRate + "; $synth.Volume = " + _ttsVolume + "; " + (string.IsNullOrEmpty(_ttsVoiceName) ? "" : "$synth.SelectVoice('" + _ttsVoiceName + "');") + " $synth.Speak('" + safeText + "')";
 
                 using (var process = new Process())
                 {
@@ -141,7 +141,7 @@ public class AgentVoiceBridge : MonoBehaviour
             {
                 if (_state == VoiceState.Listening && !_sttCts.Token.IsCancellationRequested)
                 {
-                    StartBackgroundSTT();
+                    // StartBackgroundSTT(); // отключено: распознавание теперь через Whisper
                 }
             }
         }, _sttCts.Token);
@@ -164,7 +164,7 @@ public class AgentVoiceBridge : MonoBehaviour
         _state = newState;
         if (_state == VoiceState.Listening)
         {
-            StartBackgroundSTT();
+            // StartBackgroundSTT(); // отключено: распознавание теперь через Whisper
         }
         else
         {
@@ -172,3 +172,4 @@ public class AgentVoiceBridge : MonoBehaviour
         }
     }
 }
+

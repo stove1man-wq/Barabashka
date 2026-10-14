@@ -11,3 +11,6 @@
 - Состояние проекта и план: `progress_log.md`. Читай его только если задача этого требует.
 - Код лежит в `Assets/Scripts/Core/`. Не открывай `.meta`, `.unity`, `.asset`, `ProjectSettings/`, `Library/`.
 - Работай только с файлами, указанными в задаче.
+
+- Файлы создавай и правь только инструментами write_to_file / replace_in_file, не через терминал (echo, here-string, Set-Content): PowerShell искажает символы $ и \.
+- В C#-строках с PowerShell-командами не используй $ внутри обычных строк; передавай скрипт через -EncodedCommand (Base64, UTF-16LE).

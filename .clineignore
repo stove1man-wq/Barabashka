@@ -18,4 +18,4 @@ ProjectSettings/
 *.apk
 *.aab
 ignore.conf
-test.txt
+test.txt.vsconfig

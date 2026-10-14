@@ -31,3 +31,9 @@ Recordings/
 # Misc
 .DS_Store
 Thumbs.db
+
+Assets/StreamingAssets/Whisper/
+Assets/StreamingAssets/Whisper.meta
+
+Assets/StreamingAssets/Whisper/
+Assets/StreamingAssets/Whisper.meta

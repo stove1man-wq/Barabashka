@@ -1,19 +1,22 @@
 using System;
+using System.Threading;
+using Barabashka.Contracts;
 using UnityEngine;
 
 public class AgentManager : MonoBehaviour
 {
     public string testInputMessage;
 
-    private IAgentBrain _brain;
+    private IBrain _brain;
     private AgentCommandRouter _router;
     private AgentUIManager _uiManager;
+    private CancellationTokenSource _cts;
     private int _requestVersion;
     private bool _requestRunning;
 
     private void Awake()
     {
-        _brain = new IsolatedBrain();
+        _brain = new LegacyBrainAdapter(new IsolatedBrain());
         _router = GetComponent<AgentCommandRouter>();
         _uiManager = GetComponent<AgentUIManager>();
 
@@ -26,12 +29,43 @@ public class AgentManager : MonoBehaviour
         Debug.Log("[AgentManager] Изолированное ядро и UI успешно инициализированы.");
     }
 
-    public async void SendUserMessage(string message)
+    private void OnDestroy()
     {
-        if (_brain == null || _router == null || string.IsNullOrWhiteSpace(message)) return;
+        if (_cts != null) _cts.Cancel();
+    }
+
+    /// <summary>Текстовый ввод из UI. Сохранён для совместимости.</summary>
+    public void SendUserMessage(string message)
+    {
+        SendUtterance(new Utterance(message, null, true, InputSource.Text));
+    }
+
+    /// <summary>
+    /// Единая точка входа для любого канала ввода (текст, голос).
+    /// Промежуточные реплики (IsFinal=false) только показываются в статусе.
+    /// Вызывать только из главного потока (из фонового - через IMainThread.Post).
+    /// </summary>
+    public async void SendUtterance(Utterance utterance)
+    {
+        if (utterance == null || _brain == null || _router == null) return;
+
+        if (!utterance.IsFinal)
+        {
+            if (_uiManager != null && !string.IsNullOrWhiteSpace(utterance.Text))
+                _uiManager.SetStatus("Слышу: " + utterance.Text);
+            return;
+        }
+
+        string message = utterance.Text;
+        if (string.IsNullOrWhiteSpace(message)) return;
 
         int requestVersion = ++_requestVersion;
         _requestRunning = true;
+
+        if (_cts != null) _cts.Cancel();
+        _cts = new CancellationTokenSource();
+        CancellationToken token = _cts.Token;
+
         if (_uiManager != null)
         {
             _uiManager.AddUserMessage(message);
@@ -41,12 +75,21 @@ public class AgentManager : MonoBehaviour
         Debug.Log("[User Input]: " + message);
         try
         {
-            string response = await _brain.ProcessMessageAsync(message);
+            AgentResponse response = await _brain.RespondAsync(utterance, token);
             if (requestVersion != _requestVersion) return;
 
-            Debug.Log("[Brain Response]: " + response);
-            _router.RouteCommand(response);
+            // Роутер пока принимает строку: команды с префиксом COMMAND:, остальное - обычный ответ.
+            string routed = string.IsNullOrEmpty(response.Command)
+                ? response.Text
+                : "COMMAND:" + response.Command;
+
+            Debug.Log("[Brain Response]: " + routed);
+            _router.RouteCommand(routed);
             if (_uiManager != null) _uiManager.SetStatus("Готово");
+        }
+        catch (OperationCanceledException)
+        {
+            // Запрос отменён (Stop или новый запрос) - ничего не показываем.
         }
         catch (Exception ex)
         {
@@ -72,8 +115,9 @@ public class AgentManager : MonoBehaviour
             return;
         }
 
-        // Ignore the result of the in-flight operation so it cannot overwrite the chat.
-        // True cancellation requires cancellation support in the active IAgentBrain provider.
+        // Токен отменяется, но старый IsolatedBrain отмену не поддерживает, поэтому
+        // результат дополнительно отбрасывается через номер версии запроса.
+        if (_cts != null) _cts.Cancel();
         _requestVersion++;
         _requestRunning = false;
         if (_uiManager != null)

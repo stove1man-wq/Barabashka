@@ -1,0 +1,14 @@
+{
+    "name": "Barabashka.Voice.Whisper",
+    "rootNamespace": "Barabashka.Voice.WhisperEngine",
+    "references": [ "Barabashka.Contracts", "com.whisper.unity", "UnityEngine.UI" ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
