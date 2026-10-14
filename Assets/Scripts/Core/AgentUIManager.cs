@@ -61,6 +61,7 @@ public class AgentUIManager : MonoBehaviour
 
         Image avatarHalo = CreateImage("AvatarHalo", canvasObject.transform,
             new Color(0.12f, 0.55f, 0.95f, 0.10f));
+        SetBuiltInRoundSprite(avatarHalo);
         avatarHalo.rectTransform.anchorMin = new Vector2(0.5f, 0.82f);
         avatarHalo.rectTransform.anchorMax = new Vector2(0.5f, 0.82f);
         avatarHalo.rectTransform.sizeDelta = new Vector2(300f, 300f);
@@ -68,17 +69,19 @@ public class AgentUIManager : MonoBehaviour
 
         Image avatarRing = CreateImage("AvatarRing", canvasObject.transform,
             new Color(0.15f, 0.65f, 1f, 0.32f));
+        SetBuiltInRoundSprite(avatarRing);
         avatarRing.rectTransform.anchorMin = new Vector2(0.5f, 0.82f);
         avatarRing.rectTransform.anchorMax = new Vector2(0.5f, 0.82f);
         avatarRing.rectTransform.sizeDelta = new Vector2(212f, 212f);
         avatarRing.rectTransform.anchoredPosition = Vector2.zero;
 
-        Text avatarMark = CreateText("AvatarMark", canvasObject.transform, "B", 86,
-            new Color(0.83f, 0.94f, 1f), TextAnchor.MiddleCenter);
-        avatarMark.rectTransform.anchorMin = new Vector2(0.5f, 0.82f);
-        avatarMark.rectTransform.anchorMax = new Vector2(0.5f, 0.82f);
-        avatarMark.rectTransform.sizeDelta = new Vector2(180f, 180f);
-        avatarMark.rectTransform.anchoredPosition = Vector2.zero;
+        Image avatarCore = CreateImage("AvatarCore", canvasObject.transform,
+            new Color(0.08f, 0.24f, 0.40f, 0.98f));
+        SetBuiltInRoundSprite(avatarCore);
+        avatarCore.rectTransform.anchorMin = new Vector2(0.5f, 0.82f);
+        avatarCore.rectTransform.anchorMax = new Vector2(0.5f, 0.82f);
+        avatarCore.rectTransform.sizeDelta = new Vector2(170f, 170f);
+        avatarCore.rectTransform.anchoredPosition = Vector2.zero;
 
         _statusText = CreateText("AgentStatus", canvasObject.transform, "Готов к работе", 15,
             new Color(0.42f, 0.75f, 0.95f), TextAnchor.MiddleCenter);
@@ -217,13 +220,14 @@ public class AgentUIManager : MonoBehaviour
         cardLayout.childControlWidth = true;
         cardLayout.childControlHeight = true;
         cardLayout.childForceExpandHeight = false;
-        cardLayout.childForceExpandWidth = true;
+        cardLayout.childForceExpandWidth = false;
 
         Text speakerText = CreateText("Speaker", card.transform, speaker, 14,
             isUser ? new Color(0.55f, 0.78f, 1f) : new Color(0.35f, 0.78f, 0.95f),
             TextAnchor.MiddleLeft);
         LayoutElement speakerLayout = speakerText.gameObject.AddComponent<LayoutElement>();
         speakerLayout.preferredHeight = 24f;
+        speakerLayout.flexibleWidth = 1f;
 
         Text messageText = CreateText("MessageText", card.transform, safeMessage, 21,
             new Color(0.89f, 0.93f, 0.98f), TextAnchor.UpperLeft);
@@ -232,13 +236,14 @@ public class AgentUIManager : MonoBehaviour
         messageText.supportRichText = false;
         LayoutElement messageLayout = messageText.gameObject.AddComponent<LayoutElement>();
         messageLayout.minHeight = 30f;
-        messageLayout.preferredHeight = -1f;
+        messageLayout.flexibleWidth = 1f;
 
         Button copyButton = CreateButton("CopyMessage", card.transform, "Копировать",
             new Color(0.13f, 0.19f, 0.27f, 1f), 14);
         LayoutElement copyLayout = copyButton.gameObject.AddComponent<LayoutElement>();
         copyLayout.preferredHeight = 34f;
         copyLayout.preferredWidth = 150f;
+        copyLayout.flexibleWidth = 0f;
         copyButton.onClick.AddListener(() =>
         {
             GUIUtility.systemCopyBuffer = safeMessage;
@@ -263,6 +268,15 @@ public class AgentUIManager : MonoBehaviour
         _inputField.SetTextWithoutNotify(string.Empty);
         if (_agentManager != null) _agentManager.SendUserMessage(message);
         _inputField.ActivateInputField();
+    }
+
+    private void SetBuiltInRoundSprite(Image image)
+    {
+        Sprite round = Resources.GetBuiltinResource<Sprite>("Knob.psd");
+        if (round == null) round = Resources.GetBuiltinResource<Sprite>("UI/Skin/Knob.psd");
+        if (round != null) image.sprite = round;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = true;
     }
 
     private Image CreateImage(string name, Transform parent, Color color)
