@@ -195,13 +195,20 @@ public class AgentUIManager : MonoBehaviour
         sendRect.offsetMax = Vector2.zero;
         sendButton.onClick.AddListener(SubmitText);
 
-        Button stopButton = CreateButton("StopStrip", canvasObject.transform, "■\n\nС\nТ\nО\nП",
+        Button stopButton = CreateButton("StopStrip", canvasObject.transform, "■",
             new Color(0.42f, 0.12f, 0.17f, 0.94f), 20);
         RectTransform stopRect = stopButton.GetComponent<RectTransform>();
         stopRect.anchorMin = new Vector2(0.92f, 0.10f);
         stopRect.anchorMax = new Vector2(0.985f, 0.90f);
         stopRect.offsetMin = Vector2.zero;
         stopRect.offsetMax = Vector2.zero;
+        Text stopLabel = CreateText("StopLabel", stopButton.transform, "STOP", 16,
+            Color.white, TextAnchor.MiddleCenter);
+        stopLabel.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+        stopLabel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        stopLabel.rectTransform.sizeDelta = new Vector2(100f, 24f);
+        stopLabel.rectTransform.anchoredPosition = new Vector2(0f, -30f);
+        stopLabel.rectTransform.localEulerAngles = new Vector3(0f, 0f, 90f);
         stopButton.onClick.AddListener(() =>
         {
             if (_agentManager != null) _agentManager.StopCurrentTask();
