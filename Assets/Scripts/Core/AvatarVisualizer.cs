@@ -12,8 +12,8 @@ public class AvatarVisualizer : MonoBehaviour
         _avatarMesh = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         _avatarMesh.name = "Avatar_Mesh";
         _avatarMesh.transform.SetParent(this.transform);
-        _avatarMesh.transform.localPosition = new Vector3(0f, 0.65f, 0f);
-        _avatarMesh.transform.localScale = new Vector3(1.15f, 1.15f, 1.15f);
+        _avatarMesh.transform.localPosition = new Vector3(0f, 1.65f, 0f);
+        _avatarMesh.transform.localScale = new Vector3(0.75f, 0.75f, 0.75f);
 
         Shader avatarShader = Shader.Find("Universal Render Pipeline/Lit");
         if (avatarShader == null) avatarShader = Shader.Find("Standard");
