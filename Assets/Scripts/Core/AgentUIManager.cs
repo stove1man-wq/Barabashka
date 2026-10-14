@@ -49,7 +49,7 @@ public class AgentUIManager : MonoBehaviour
             new Color(0.025f, 0.035f, 0.065f, 1f));
         Stretch(background.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
 
-        Text title = CreateText("AppTitle", canvasObject.transform, "BARABASHKA", 30,
+        Text title = CreateText("AppTitle", canvasObject.transform, "BARABASHKA", 34,
             new Color(0.78f, 0.88f, 1f), TextAnchor.MiddleLeft);
         Place(title.rectTransform, new Vector2(0.06f, 0.93f), new Vector2(0.72f, 0.985f),
             Vector2.zero, Vector2.zero);
@@ -88,7 +88,7 @@ public class AgentUIManager : MonoBehaviour
         Place(_statusText.rectTransform, new Vector2(0.12f, 0.715f), new Vector2(0.86f, 0.745f),
             Vector2.zero, Vector2.zero);
 
-        Text chatLabel = CreateText("ConversationLabel", canvasObject.transform, "ДИАЛОГ", 15,
+        Text chatLabel = CreateText("ConversationLabel", canvasObject.transform, "ДИАЛОГ", 17,
             new Color(0.43f, 0.66f, 0.84f), TextAnchor.MiddleLeft);
         Place(chatLabel.rectTransform, new Vector2(0.06f, 0.675f), new Vector2(0.83f, 0.705f),
             Vector2.zero, Vector2.zero);
@@ -96,7 +96,7 @@ public class AgentUIManager : MonoBehaviour
         Image chatPanel = CreateImage("ConversationPanel", canvasObject.transform,
             new Color(0.055f, 0.075f, 0.115f, 0.96f));
         SetRoundedSprite(chatPanel);
-        Place(chatPanel.rectTransform, new Vector2(0.045f, 0.19f), new Vector2(0.91f, 0.67f),
+        Place(chatPanel.rectTransform, new Vector2(0.045f, 0.19f), new Vector2(0.92f, 0.67f),
             Vector2.zero, Vector2.zero);
 
         GameObject scrollObject = new GameObject("ConversationScroll");
@@ -140,7 +140,7 @@ public class AgentUIManager : MonoBehaviour
         Image inputPanel = CreateImage("InputPanel", canvasObject.transform,
             new Color(0.075f, 0.105f, 0.155f, 1f));
         SetRoundedSprite(inputPanel);
-        Place(inputPanel.rectTransform, new Vector2(0.045f, 0.055f), new Vector2(0.91f, 0.145f),
+        Place(inputPanel.rectTransform, new Vector2(0.045f, 0.045f), new Vector2(0.92f, 0.16f),
             Vector2.zero, Vector2.zero);
 
         GameObject inputObject = new GameObject("MessageInput");
@@ -156,11 +156,11 @@ public class AgentUIManager : MonoBehaviour
         Stretch(inputRect, new Vector2(0.035f, 0.12f), new Vector2(0.67f, 0.88f),
             Vector2.zero, Vector2.zero);
 
-        Text inputText = CreateText("InputText", inputObject.transform, "", 22,
+        Text inputText = CreateText("InputText", inputObject.transform, "", 24,
             Color.white, TextAnchor.MiddleLeft);
         Place(inputText.rectTransform, new Vector2(0.025f, 0.05f), new Vector2(0.975f, 0.95f),
             Vector2.zero, Vector2.zero);
-        Text placeholder = CreateText("Placeholder", inputObject.transform, "Напишите сообщение…", 22,
+        Text placeholder = CreateText("Placeholder", inputObject.transform, "Напишите сообщение…", 24,
             new Color(0.48f, 0.57f, 0.68f), TextAnchor.MiddleLeft);
         Place(placeholder.rectTransform, new Vector2(0.025f, 0.05f), new Vector2(0.975f, 0.95f),
             Vector2.zero, Vector2.zero);
@@ -195,14 +195,14 @@ public class AgentUIManager : MonoBehaviour
         sendRect.offsetMax = Vector2.zero;
         sendButton.onClick.AddListener(SubmitText);
 
-        Button stopButton = CreateButton("StopStrip", canvasObject.transform, "■",
+        Button stopButton = CreateButton("StopStrip", canvasObject.transform, "",
             new Color(0.42f, 0.12f, 0.17f, 0.94f), 20);
         RectTransform stopRect = stopButton.GetComponent<RectTransform>();
-        stopRect.anchorMin = new Vector2(0.92f, 0.055f);
-        stopRect.anchorMax = new Vector2(0.985f, 0.145f);
+        stopRect.anchorMin = new Vector2(0.92f, 0.045f);
+        stopRect.anchorMax = new Vector2(0.985f, 0.16f);
         stopRect.offsetMin = Vector2.zero;
         stopRect.offsetMax = Vector2.zero;
-        Text stopLabel = CreateText("StopLabel", stopButton.transform, "STOP", 16,
+        Text stopLabel = CreateText("StopLabel", stopButton.transform, "STOP", 18,
             Color.white, TextAnchor.MiddleCenter);
         stopLabel.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
         stopLabel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
@@ -251,14 +251,14 @@ public class AgentUIManager : MonoBehaviour
         cardLayout.childForceExpandHeight = false;
         cardLayout.childForceExpandWidth = false;
 
-        Text speakerText = CreateText("Speaker", card.transform, speaker, 14,
+        Text speakerText = CreateText("Speaker", card.transform, speaker, 16,
             isUser ? new Color(0.55f, 0.78f, 1f) : new Color(0.35f, 0.78f, 0.95f),
             TextAnchor.MiddleLeft);
         LayoutElement speakerLayout = speakerText.gameObject.AddComponent<LayoutElement>();
         speakerLayout.preferredHeight = 24f;
         speakerLayout.flexibleWidth = 1f;
 
-        Text messageText = CreateText("MessageText", card.transform, safeMessage, 21,
+        Text messageText = CreateText("MessageText", card.transform, safeMessage, 23,
             new Color(0.89f, 0.93f, 0.98f), TextAnchor.UpperLeft);
         messageText.horizontalOverflow = HorizontalWrapMode.Wrap;
         messageText.verticalOverflow = VerticalWrapMode.Overflow;
