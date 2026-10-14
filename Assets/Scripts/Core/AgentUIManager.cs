@@ -270,11 +270,39 @@ public class AgentUIManager : MonoBehaviour
         _inputField.ActivateInputField();
     }
 
+    private static Sprite _runtimeCircleSprite;
+
     private void SetBuiltInRoundSprite(Image image)
     {
-        Sprite round = Resources.GetBuiltinResource<Sprite>("Knob.psd");
-        if (round == null) round = Resources.GetBuiltinResource<Sprite>("UI/Skin/Knob.psd");
-        if (round != null) image.sprite = round;
+        // Do not depend on Unity's internal editor skin assets: they are not
+        // guaranteed to exist in player builds or across Unity versions.
+        if (_runtimeCircleSprite == null)
+        {
+            const int size = 128;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.name = "Barabashka_RuntimeCircle";
+            texture.filterMode = FilterMode.Bilinear;
+            texture.wrapMode = TextureWrapMode.Clamp;
+            Color[] pixels = new Color[size * size];
+            Vector2 center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+            float radius = size * 0.5f - 1f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float distance = Vector2.Distance(new Vector2(x, y), center);
+                    float alpha = Mathf.Clamp01(radius + 0.75f - distance);
+                    pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
+                }
+            }
+            texture.SetPixels(pixels);
+            texture.Apply(false, true);
+            _runtimeCircleSprite = Sprite.Create(texture, new Rect(0, 0, size, size),
+                new Vector2(0.5f, 0.5f), size);
+            _runtimeCircleSprite.name = "Barabashka_RuntimeCircleSprite";
+        }
+
+        image.sprite = _runtimeCircleSprite;
         image.type = Image.Type.Simple;
         image.preserveAspect = true;
     }
