@@ -168,6 +168,24 @@ public class AgentUIManager : MonoBehaviour
         _inputField.placeholder = placeholder;
         _inputField.onEndEdit.AddListener(OnInputEndEdit);
 
+        Button attachmentButton = CreateButton("AttachmentButton", inputPanel.transform, "＋",
+            new Color(0.12f, 0.18f, 0.27f, 1f), 30);
+        RectTransform attachmentRect = attachmentButton.GetComponent<RectTransform>();
+        attachmentRect.anchorMin = new Vector2(0.69f, 0.22f);
+        attachmentRect.anchorMax = new Vector2(0.77f, 0.78f);
+        attachmentRect.offsetMin = Vector2.zero;
+        attachmentRect.offsetMax = Vector2.zero;
+        attachmentButton.onClick.AddListener(() => SetStatus("Вложения будут добавлены отдельным этапом"));
+
+        Button microphoneButton = CreateButton("MicrophoneButton", inputPanel.transform, "MIC",
+            new Color(0.12f, 0.18f, 0.27f, 1f), 14);
+        RectTransform microphoneRect = microphoneButton.GetComponent<RectTransform>();
+        microphoneRect.anchorMin = new Vector2(0.78f, 0.22f);
+        microphoneRect.anchorMax = new Vector2(0.86f, 0.78f);
+        microphoneRect.offsetMin = Vector2.zero;
+        microphoneRect.offsetMax = Vector2.zero;
+        microphoneButton.onClick.AddListener(() => SetStatus("Голосовой ввод будет добавлен отдельным этапом"));
+
         Button sendButton = CreateButton("SendButton", inputPanel.transform, "↑",
             new Color(0.12f, 0.48f, 0.82f, 1f), 34);
         RectTransform sendRect = sendButton.GetComponent<RectTransform>();
