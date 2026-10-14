@@ -96,7 +96,7 @@ public class AgentUIManager : MonoBehaviour
         Image chatPanel = CreateImage("ConversationPanel", canvasObject.transform,
             new Color(0.055f, 0.075f, 0.115f, 0.96f));
         SetRoundedSprite(chatPanel);
-        Place(chatPanel.rectTransform, new Vector2(0.045f, 0.19f), new Vector2(0.89f, 0.67f),
+        Place(chatPanel.rectTransform, new Vector2(0.045f, 0.19f), new Vector2(0.91f, 0.67f),
             Vector2.zero, Vector2.zero);
 
         GameObject scrollObject = new GameObject("ConversationScroll");
@@ -140,7 +140,7 @@ public class AgentUIManager : MonoBehaviour
         Image inputPanel = CreateImage("InputPanel", canvasObject.transform,
             new Color(0.075f, 0.105f, 0.155f, 1f));
         SetRoundedSprite(inputPanel);
-        Place(inputPanel.rectTransform, new Vector2(0.045f, 0.055f), new Vector2(0.81f, 0.145f),
+        Place(inputPanel.rectTransform, new Vector2(0.045f, 0.055f), new Vector2(0.91f, 0.145f),
             Vector2.zero, Vector2.zero);
 
         GameObject inputObject = new GameObject("MessageInput");
@@ -198,16 +198,16 @@ public class AgentUIManager : MonoBehaviour
         Button stopButton = CreateButton("StopStrip", canvasObject.transform, "■",
             new Color(0.42f, 0.12f, 0.17f, 0.94f), 20);
         RectTransform stopRect = stopButton.GetComponent<RectTransform>();
-        stopRect.anchorMin = new Vector2(0.92f, 0.10f);
-        stopRect.anchorMax = new Vector2(0.985f, 0.90f);
+        stopRect.anchorMin = new Vector2(0.92f, 0.055f);
+        stopRect.anchorMax = new Vector2(0.985f, 0.145f);
         stopRect.offsetMin = Vector2.zero;
         stopRect.offsetMax = Vector2.zero;
         Text stopLabel = CreateText("StopLabel", stopButton.transform, "STOP", 16,
             Color.white, TextAnchor.MiddleCenter);
         stopLabel.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
         stopLabel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-        stopLabel.rectTransform.sizeDelta = new Vector2(100f, 24f);
-        stopLabel.rectTransform.anchoredPosition = new Vector2(0f, -30f);
+        stopLabel.rectTransform.sizeDelta = new Vector2(76f, 22f);
+        stopLabel.rectTransform.anchoredPosition = Vector2.zero;
         stopLabel.rectTransform.localEulerAngles = new Vector3(0f, 0f, 90f);
         stopButton.onClick.AddListener(() =>
         {
