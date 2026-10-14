@@ -108,6 +108,9 @@ public class AgentUIManager : MonoBehaviour
         viewport.transform.SetParent(scrollObject.transform, false);
         RectTransform viewportRect = viewport.AddComponent<RectTransform>();
         Stretch(viewportRect, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        Image viewportImage = viewport.AddComponent<Image>();
+        viewportImage.color = new Color(1f, 1f, 1f, 0.001f);
+        viewportImage.raycastTarget = true;
         viewport.AddComponent<RectMask2D>();
         _scrollRect.viewport = viewportRect;
 
@@ -291,6 +294,7 @@ public class AgentUIManager : MonoBehaviour
     {
         Image image = CreateImage(name, parent, color);
         Button button = image.gameObject.AddComponent<Button>();
+        button.targetGraphic = image;
         ColorBlock colors = button.colors;
         colors.normalColor = color;
         colors.highlightedColor = Color.Lerp(color, Color.white, 0.12f);
