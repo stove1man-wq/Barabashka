@@ -95,6 +95,7 @@ public class AgentUIManager : MonoBehaviour
 
         Image chatPanel = CreateImage("ConversationPanel", canvasObject.transform,
             new Color(0.055f, 0.075f, 0.115f, 0.96f));
+        SetRoundedSprite(chatPanel);
         Place(chatPanel.rectTransform, new Vector2(0.045f, 0.19f), new Vector2(0.89f, 0.67f),
             Vector2.zero, Vector2.zero);
 
@@ -138,6 +139,7 @@ public class AgentUIManager : MonoBehaviour
 
         Image inputPanel = CreateImage("InputPanel", canvasObject.transform,
             new Color(0.075f, 0.105f, 0.155f, 1f));
+        SetRoundedSprite(inputPanel);
         Place(inputPanel.rectTransform, new Vector2(0.045f, 0.055f), new Vector2(0.81f, 0.145f),
             Vector2.zero, Vector2.zero);
 
@@ -145,6 +147,7 @@ public class AgentUIManager : MonoBehaviour
         inputObject.transform.SetParent(inputPanel.transform, false);
         Image inputBackground = inputObject.AddComponent<Image>();
         inputBackground.color = new Color(0.10f, 0.14f, 0.20f, 1f);
+        SetRoundedSprite(inputBackground);
         _inputField = inputObject.AddComponent<InputField>();
         _inputField.targetGraphic = inputBackground;
         _inputField.lineType = InputField.LineType.MultiLineNewline;
@@ -211,6 +214,7 @@ public class AgentUIManager : MonoBehaviour
         GameObject card = new GameObject(isUser ? "UserMessage" : "AgentMessage");
         card.transform.SetParent(_messageContent, false);
         Image cardImage = card.AddComponent<Image>();
+        SetRoundedSprite(cardImage);
         cardImage.color = isUser
             ? new Color(0.10f, 0.23f, 0.36f, 1f)
             : new Color(0.085f, 0.115f, 0.17f, 1f);
@@ -271,6 +275,7 @@ public class AgentUIManager : MonoBehaviour
     }
 
     private static Sprite _runtimeCircleSprite;
+    private static Sprite _runtimeRoundedSprite;
 
     private void SetBuiltInRoundSprite(Image image)
     {
@@ -307,6 +312,43 @@ public class AgentUIManager : MonoBehaviour
         image.preserveAspect = true;
     }
 
+    private void SetRoundedSprite(Image image)
+    {
+        if (_runtimeRoundedSprite == null)
+        {
+            const int size = 128;
+            const float radius = 22f;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.name = "Barabashka_RoundedPanel";
+            texture.filterMode = FilterMode.Bilinear;
+            texture.wrapMode = TextureWrapMode.Clamp;
+            Color[] pixels = new Color[size * size];
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float cx = Mathf.Clamp(x, radius, size - radius - 1f);
+                    float cy = Mathf.Clamp(y, radius, size - radius - 1f);
+                    float distance = Vector2.Distance(new Vector2(x, y), new Vector2(cx, cy));
+                    float alpha = Mathf.Clamp01(radius + 0.75f - distance);
+                    pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
+                }
+            }
+
+            texture.SetPixels(pixels);
+            texture.Apply(false, true);
+            _runtimeRoundedSprite = Sprite.Create(texture, new Rect(0, 0, size, size),
+                new Vector2(0.5f, 0.5f), size, 0, SpriteMeshType.FullRect,
+                new Vector4(28f, 28f, 28f, 28f));
+            _runtimeRoundedSprite.name = "Barabashka_RoundedPanelSprite";
+        }
+
+        image.sprite = _runtimeRoundedSprite;
+        image.type = Image.Type.Sliced;
+        image.preserveAspect = false;
+    }
+
     private Image CreateImage(string name, Transform parent, Color color)
     {
         GameObject obj = new GameObject(name);
@@ -335,6 +377,7 @@ public class AgentUIManager : MonoBehaviour
     private Button CreateButton(string name, Transform parent, string label, Color color, int fontSize)
     {
         Image image = CreateImage(name, parent, color);
+        SetRoundedSprite(image);
         Button button = image.gameObject.AddComponent<Button>();
         button.targetGraphic = image;
         ColorBlock colors = button.colors;
