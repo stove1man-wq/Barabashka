@@ -167,7 +167,7 @@ public class AgentUIManager : MonoBehaviour
         sendRect.offsetMax = Vector2.zero;
         sendButton.onClick.AddListener(SubmitText);
 
-        Button stopButton = CreateButton("StopStrip", canvasObject.transform, "■\n\nСТОП",
+        Button stopButton = CreateButton("StopStrip", canvasObject.transform, "■\n\nС\nТ\nО\nП",
             new Color(0.42f, 0.12f, 0.17f, 0.94f), 20);
         RectTransform stopRect = stopButton.GetComponent<RectTransform>();
         stopRect.anchorMin = new Vector2(0.92f, 0.02f);
@@ -228,7 +228,7 @@ public class AgentUIManager : MonoBehaviour
         messageText.supportRichText = false;
         LayoutElement messageLayout = messageText.gameObject.AddComponent<LayoutElement>();
         messageLayout.minHeight = 30f;
-        messageLayout.preferredHeight = Mathf.Max(34f, messageText.preferredHeight);
+        messageLayout.preferredHeight = -1f;
 
         Button copyButton = CreateButton("CopyMessage", card.transform, "Копировать",
             new Color(0.13f, 0.19f, 0.27f, 1f), 14);
