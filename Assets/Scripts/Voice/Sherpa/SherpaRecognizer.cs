@@ -14,27 +14,36 @@ using UnityEngine.Events;
 namespace Barabashka.Voice.SherpaEngine
 {
     /// <summary>
-    /// Офлайн-распознавание речи на sherpa-onnx-unity: микрофон -> VAD (silero) режет речь на фразы ->
-    /// каждая фраза распознаётся моделью (например, GigaAM v2 для русского).
-    /// Промежуточных результатов нет: OnFinal приходит после паузы в речи.
-    /// Все методы вызывать из главного потока Unity (компоненты Sherpa работают в нём).
+    /// Офлайн-распознавание на sherpa-onnx-unity ровно по схеме примера пакета (он у вас работает):
+    /// SherpaMicrophoneInput.ChunkReady -> накопление звука -> OfflineSpeechRecognizerComponent.TranscribeClipAsync.
+    /// VAD-компонент не используется. Конец фразы определяется по паузе простым порогом громкости.
+    /// OnFinal приходит после паузы в речи. Все методы вызывать из главного потока Unity.
     /// </summary>
     public sealed class SherpaRecognizer : ISpeechRecognizer
     {
-        private const float MinSegmentSec = 0.3f;
+        // Настройки определения речи/паузы.
+        private const float SpeechRms = 0.012f;      // громкость, выше которой считаем, что идёт речь
+        private const float EndSilenceSec = 0.9f;    // пауза, после которой фраза считается законченной
+        private const float PreRollSec = 0.35f;      // сколько звука до начала речи добавляем к фразе
+        private const float MinSpeechSec = 0.25f;    // более короткие всплески игнорируем
+        private const float MaxSegmentSec = 25f;     // принудительно режем слишком длинную фразу
 
         private readonly string _asrModelId;
-        private readonly string _vadModelId;
         private readonly bool _verboseLog;
         private readonly TimeSpan _loadTimeout;
         private readonly CancellationTokenSource _cts = new CancellationTokenSource();
         private readonly Queue<Segment> _queue = new Queue<Segment>();
-        private readonly List<string> _capturedLogs = new List<string>();
         private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+
+        // Накопление текущей фразы.
+        private readonly List<float> _current = new List<float>();
+        private readonly List<float> _preRoll = new List<float>();
+        private bool _inSpeech;
+        private float _speechSec;
+        private float _silenceSec;
 
         private GameObject _host;
         private SherpaMicrophoneInput _mic;
-        private VoiceActivityDetectionComponent _vad;
         private OfflineSpeechRecognizerComponent _asr;
         private RecognizerOptions _options = new RecognizerOptions();
         private bool _initialized;
@@ -48,13 +57,12 @@ namespace Barabashka.Voice.SherpaEngine
             public int SampleRate;
         }
 
-        /// <param name="asrModelId">Идентификатор офлайн-модели распознавания (папка в StreamingAssets/sherpa-onnx/models/speech-recognition).</param>
-        /// <param name="vadModelId">Идентификатор модели VAD, по умолчанию "silero-vad".</param>
+        /// <param name="asrModelId">Идентификатор офлайн-модели (папка в StreamingAssets/sherpa-onnx/models/speech-recognition).</param>
+        /// <param name="vadModelId">Не используется (оставлен для совместимости вызова).</param>
         public SherpaRecognizer(string asrModelId, string vadModelId = "silero-vad",
             float loadTimeoutSec = 180f, bool verboseLog = true)
         {
             _asrModelId = asrModelId;
-            _vadModelId = vadModelId;
             _loadTimeout = TimeSpan.FromSeconds(loadTimeoutSec);
             _verboseLog = verboseLog;
         }
@@ -64,7 +72,7 @@ namespace Barabashka.Voice.SherpaEngine
         public bool SupportsPartialResults { get { return false; } }
         public bool SupportsAutoLanguage { get { return false; } }
 
-#pragma warning disable 0067 // OnPartial объявлен контрактом, но офлайн-движок его не вызывает
+#pragma warning disable 0067
         public event Action<Utterance> OnPartial;
 #pragma warning restore 0067
         public event Action<Utterance> OnFinal;
@@ -81,61 +89,67 @@ namespace Barabashka.Voice.SherpaEngine
 
             try
             {
-                // Как в примерах пакета: сначала подтягиваем список моделей (реестр), иначе
-                // TryLoadModule может не найти модель по идентификатору.
-                await PrefetchManifestAsync(SherpaONNXModuleType.SpeechRecognition, ct);
-                await PrefetchManifestAsync(SherpaONNXModuleType.VoiceActivityDetection, ct);
-
-                // Объект создаётся выключенным, чтобы все три компонента получили Awake одновременно при включении.
-                _host = new GameObject("[SherpaRecognizer]");
-                _host.SetActive(false);
-                UnityEngine.Object.DontDestroyOnLoad(_host);
-
-                _mic = _host.AddComponent<SherpaMicrophoneInput>();
-                _vad = _host.AddComponent<VoiceActivityDetectionComponent>();
-                _asr = _host.AddComponent<OfflineSpeechRecognizerComponent>();
-
-                // Компоненты сначала включаем (как в сцене примера) и только потом задаём модель:
-                // иначе они могли начать загрузку сами, и повторный TryLoadModule вернул бы false.
-                _host.SetActive(true);
-
-                _vad.BindInput(_mic);
-                _vad.SpeechSegmentReady += HandleSegment;
-                _vad.SpeakingStateChanged += HandleSpeaking;
-
-                _asr.ModelId = _asrModelId;
-                // В примере язык задаётся всегда; для одноязычной модели значение не критично.
-                _asr.RecognitionLanguage = IsAuto(_options.LanguageHint) ? string.Empty : _options.LanguageHint;
-                _vad.ModelId = _vadModelId;
-
-                // Подписываемся на готовность ДО запуска загрузки, чтобы не пропустить событие.
-                Task asrReady = WaitReady(
-                    a => _asr.InitializationStateChangedEvent.AddListener(a),
-                    a => _asr.InitializationStateChangedEvent.RemoveListener(a), ct);
-                Task vadReady = WaitReady(
-                    a => _vad.InitializationStateChangedEvent.AddListener(a),
-                    a => _vad.InitializationStateChangedEvent.RemoveListener(a), ct);
-
-                // Пакет пишет причину отказа TryLoadModule в консоль Unity; перехватываем эти строки,
-                // чтобы они попали прямо в текст нашей ошибки.
-                Application.logMessageReceived += CaptureLog;
+                // Как в примере: список моделей получаем заранее.
                 try
                 {
-                    if (!_asr.TryLoadModule())
-                        throw new InvalidOperationException("Не удалось начать загрузку модели распознавания: " + _asrModelId + CapturedLogs());
-                    if (!_vad.TryLoadModule())
-                        throw new InvalidOperationException("Не удалось начать загрузку модели VAD: " + _vadModelId + CapturedLogs());
+                    await SherpaONNXModelRegistry.Instance
+                        .GetManifestAsync(SherpaONNXModuleType.SpeechRecognition, ct).ConfigureAwait(true);
+                    Log("список моделей получен");
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("[Sherpa] Не удалось получить список моделей: " + e.Message);
+                }
 
-                    await Task.WhenAll(asrReady, vadReady);
+                // Объект сразу активный, а ModelId задаём ПОСЛЕ создания компонентов — как в сцене примера,
+                // где компоненты уже существуют, а модель выбирается и загружается позже.
+                _host = new GameObject("[SherpaRecognizer]");
+                UnityEngine.Object.DontDestroyOnLoad(_host);
+                _mic = _host.AddComponent<SherpaMicrophoneInput>();
+                _asr = _host.AddComponent<OfflineSpeechRecognizerComponent>();
+
+                // Даём компонентам один кадр на Awake/OnEnable/Start.
+                await Task.Yield();
+                await Task.Yield();
+
+                TaskCompletionSource<bool> ready = new TaskCompletionSource<bool>();
+                UnityAction<bool> listener = null;
+                listener = r => { if (r) ready.TrySetResult(true); };
+                _asr.InitializationStateChangedEvent.AddListener(listener);
+
+                try
+                {
+                    _asr.ModelId = _asrModelId;
+                    _asr.RecognitionLanguage = IsAuto(_options.LanguageHint) ? string.Empty : _options.LanguageHint;
+
+                    bool started = _asr.TryLoadModule();
+                    Log("TryLoadModule=" + started + ", IsInitialized=" + _asr.IsInitialized);
+
+                    // false не всегда ошибка: загрузка могла уже идти или модель уже загружена.
+                    if (!_asr.IsInitialized)
+                    {
+                        Task delay = Task.Delay(_loadTimeout, ct);
+                        Task done = await Task.WhenAny(ready.Task, delay);
+                        if (done != ready.Task && !_asr.IsInitialized)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            throw new TimeoutException("Модель не загрузилась за " +
+                                _loadTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
+                                " с (TryLoadModule=" + started + ", ModelId=" + _asr.ModelId + ").");
+                        }
+                    }
                 }
                 finally
                 {
-                    Application.logMessageReceived -= CaptureLog;
+                    _asr.InitializationStateChangedEvent.RemoveListener(listener);
                 }
+
+                _mic.ChunkReady += HandleChunk;
 
                 _initialized = true;
                 SetState(RecognizerState.Idle);
-                Log("модели загружены: " + _asrModelId + " + " + _vadModelId);
+                Log("модель загружена: " + _asrModelId);
             }
             catch (Exception e)
             {
@@ -148,6 +162,8 @@ namespace Barabashka.Voice.SherpaEngine
         public void StartListening()
         {
             if (_disposed || !_initialized || _listening) return;
+
+            ResetSegmentState();
 
             if (!_mic.IsCapturing && !_mic.TryStartCapture())
             {
@@ -167,6 +183,9 @@ namespace Barabashka.Voice.SherpaEngine
             _listening = false;
             try { _mic.StopCapture(); }
             catch (Exception e) { Debug.LogException(e); }
+
+            // Недосказанную фразу всё равно распознаём, как кнопка Record в примере.
+            FinishSegment();
             SetState(RecognizerState.Idle);
         }
 
@@ -180,13 +199,11 @@ namespace Barabashka.Voice.SherpaEngine
 
             try
             {
-                if (_vad != null)
+                if (_mic != null)
                 {
-                    _vad.SpeechSegmentReady -= HandleSegment;
-                    _vad.SpeakingStateChanged -= HandleSpeaking;
+                    _mic.ChunkReady -= HandleChunk;
+                    if (_mic.IsCapturing) _mic.StopCapture();
                 }
-                if (_mic != null && _mic.IsCapturing) _mic.StopCapture();
-                if (_vad != null) _vad.DisposeModule();
                 if (_asr != null) _asr.DisposeModule();
             }
             catch (Exception e)
@@ -198,21 +215,87 @@ namespace Barabashka.Voice.SherpaEngine
             _host = null;
         }
 
-        private void HandleSpeaking(bool speaking)
-        {
-            Log(speaking ? "VAD: речь началась" : "VAD: речь закончилась");
-        }
+        // ---- Микрофон: нарезка на фразы по паузам ----
 
-        private void HandleSegment(float[] samples, int sampleRate)
+        private void HandleChunk(float[] samples, int sampleRate)
         {
             if (_disposed || !_listening || samples == null || samples.Length == 0 || sampleRate <= 0) return;
-            if (samples.Length / (float)sampleRate < MinSegmentSec) return;
 
-            _queue.Enqueue(new Segment { Samples = samples, SampleRate = sampleRate });
-            if (!_pumping) PumpAsync();
+            float dur = samples.Length / (float)sampleRate;
+            float rms = Rms(samples);
+            bool loud = rms >= SpeechRms;
+
+            if (!_inSpeech)
+            {
+                if (loud)
+                {
+                    _inSpeech = true;
+                    _speechSec = 0f;
+                    _silenceSec = 0f;
+                    _current.Clear();
+                    _current.AddRange(_preRoll);
+                    _current.AddRange(samples);
+                    _speechSec += dur;
+                    _segmentRate = sampleRate;
+                    Log("речь началась (rms=" + rms.ToString("F3", CultureInfo.InvariantCulture) + ")");
+                }
+                else
+                {
+                    _preRoll.AddRange(samples);
+                    int keep = (int)(PreRollSec * sampleRate);
+                    if (_preRoll.Count > keep) _preRoll.RemoveRange(0, _preRoll.Count - keep);
+                }
+                return;
+            }
+
+            _current.AddRange(samples);
+            if (loud)
+            {
+                _speechSec += dur;
+                _silenceSec = 0f;
+            }
+            else
+            {
+                _silenceSec += dur;
+            }
+            _segmentRate = sampleRate;
+
+            float total = _current.Count / (float)sampleRate;
+            if (_silenceSec >= EndSilenceSec || total >= MaxSegmentSec)
+                FinishSegment();
         }
 
-        // Фразы распознаются строго по очереди, чтобы не запускать два распознавания одновременно.
+        private int _segmentRate = 16000;
+
+        private void FinishSegment()
+        {
+            if (_inSpeech && _speechSec >= MinSpeechSec && _current.Count > 0)
+            {
+                Log("речь закончилась, длина " + (_current.Count / (float)_segmentRate).ToString("F1", CultureInfo.InvariantCulture) + " с");
+                _queue.Enqueue(new Segment { Samples = _current.ToArray(), SampleRate = _segmentRate });
+                if (!_pumping) PumpAsync();
+            }
+            ResetSegmentState();
+        }
+
+        private void ResetSegmentState()
+        {
+            _inSpeech = false;
+            _speechSec = 0f;
+            _silenceSec = 0f;
+            _current.Clear();
+            _preRoll.Clear();
+        }
+
+        private static float Rms(float[] s)
+        {
+            double sum = 0;
+            for (int i = 0; i < s.Length; i++) sum += s[i] * s[i];
+            return (float)Math.Sqrt(sum / s.Length);
+        }
+
+        // ---- Распознавание: по очереди ----
+
         private async void PumpAsync()
         {
             _pumping = true;
@@ -235,7 +318,7 @@ namespace Barabashka.Voice.SherpaEngine
             AudioClip clip = null;
             try
             {
-                clip = AudioClip.Create("SherpaSegment", segment.Samples.Length, 1, segment.SampleRate, false);
+                clip = AudioClip.Create("RecordedClip", segment.Samples.Length, 1, segment.SampleRate, false);
                 clip.SetData(segment.Samples, 0);
 
                 var result = await _asr.TranscribeClipAsync(clip, _cts.Token).ConfigureAwait(true);
@@ -243,7 +326,10 @@ namespace Barabashka.Voice.SherpaEngine
 
                 if (result.Status != SpeechRecognition.TranscriptionStatus.Success ||
                     string.IsNullOrWhiteSpace(result.Text))
+                {
+                    Log("пустой результат (status=" + result.Status + ")");
                     return;
+                }
 
                 string text = result.Text.Trim();
                 Log("FINAL: " + text);
@@ -262,76 +348,6 @@ namespace Barabashka.Voice.SherpaEngine
             finally
             {
                 if (clip != null) UnityEngine.Object.Destroy(clip);
-            }
-        }
-
-        private Task WaitReady(Action<UnityAction<bool>> add, Action<UnityAction<bool>> remove, CancellationToken ct)
-        {
-            var tcs = new TaskCompletionSource<bool>();
-            UnityAction<bool> listener = null;
-            listener = ready =>
-            {
-                if (!ready) return;
-                remove(listener);
-                tcs.TrySetResult(true);
-            };
-            add(listener);
-
-            return WaitWithTimeout(tcs.Task, remove, listener, ct);
-        }
-
-        private async Task WaitWithTimeout(Task ready, Action<UnityAction<bool>> remove,
-            UnityAction<bool> listener, CancellationToken ct)
-        {
-            Task delay = Task.Delay(_loadTimeout, ct);
-            Task finished = await Task.WhenAny(ready, delay);
-            if (finished != ready)
-            {
-                remove(listener);
-                ct.ThrowIfCancellationRequested();
-                throw new TimeoutException("Модель Sherpa не загрузилась за " + _loadTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
-                    " с. Проверьте папку StreamingAssets/sherpa-onnx/models и интернет (VAD может скачиваться при первом запуске).");
-            }
-            await ready;
-        }
-
-        private void CaptureLog(string message, string stackTrace, LogType type)
-        {
-            if (string.IsNullOrEmpty(message)) return;
-            bool relevant = message.StartsWith("[OfflineSpeechRecognizerComponent]", StringComparison.Ordinal) ||
-                            message.StartsWith("[VoiceActivityDetectionComponent]", StringComparison.Ordinal) ||
-                            message.IndexOf("Sherpa", StringComparison.OrdinalIgnoreCase) >= 0;
-            if (!relevant) return;
-            lock (_capturedLogs)
-            {
-                if (_capturedLogs.Count < 12) _capturedLogs.Add(message);
-            }
-        }
-
-        private string CapturedLogs()
-        {
-            lock (_capturedLogs)
-            {
-                if (_capturedLogs.Count == 0) return string.Empty;
-                return "\nСообщения Sherpa:\n" + string.Join("\n", _capturedLogs);
-            }
-        }
-
-        private async Task PrefetchManifestAsync(SherpaONNXModuleType type, CancellationToken ct)
-        {
-            try
-            {
-                await SherpaONNXModelRegistry.Instance.GetManifestAsync(type, ct).ConfigureAwait(true);
-                Log("список моделей получен: " + type);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception e)
-            {
-                // Без интернета список может не получиться; пробуем грузить уже скачанную модель как есть.
-                Debug.LogWarning("[Sherpa] Не удалось получить список моделей (" + type + "): " + e.Message);
             }
         }
 
