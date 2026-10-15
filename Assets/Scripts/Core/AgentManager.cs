@@ -7,6 +7,9 @@ public class AgentManager : MonoBehaviour
 {
     public string testInputMessage;
 
+    /// <summary>Вызывается после получения ответа ядра; голосовой слой подписывается независимо от UI.</summary>
+    public event Action<AgentResponse> ResponseReady;
+
     private IBrain _brain;
     private AgentCommandRouter _router;
     private AgentUIManager _uiManager;
@@ -104,6 +107,8 @@ public class AgentManager : MonoBehaviour
             Debug.Log("[Brain Response]: " + routed);
             _router.RouteCommand(routed);
             if (_uiManager != null) _uiManager.SetStatus("Готово");
+            Action<AgentResponse> responseHandler = ResponseReady;
+            if (responseHandler != null) responseHandler(response);
         }
         catch (OperationCanceledException)
         {
