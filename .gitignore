@@ -37,3 +37,10 @@ Assets/StreamingAssets/Whisper.meta
 
 Assets/StreamingAssets/Whisper/
 Assets/StreamingAssets/Whisper.meta
+
+# Speech models (too large for GitHub, see docs)
+/Assets/StreamingAssets/sherpa-onnx/models/
+
+# Backups and Unity recovery scenes
+*.bak_*
+/Assets/_Recovery/

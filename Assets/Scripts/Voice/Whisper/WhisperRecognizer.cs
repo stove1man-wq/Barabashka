@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +25,8 @@ namespace Barabashka.Voice.WhisperEngine
         private readonly bool _useGpu;
         private readonly float _stepSec;
         private readonly float _lengthSec;
+        private readonly bool _verboseLog;
+        private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
 
         private GameObject _host;
         private WhisperManager _manager;
@@ -32,6 +35,7 @@ namespace Barabashka.Voice.WhisperEngine
         private RecognizerOptions _options = new RecognizerOptions();
         private bool _listening;
         private bool _stopping;
+        private int _stopGeneration;
         private bool _pendingStart;
         private bool _disposed;
 
@@ -40,8 +44,9 @@ namespace Barabashka.Voice.WhisperEngine
         /// <param name="lengthSec">Длина окна до принудительного завершения реплики.</param>
         public WhisperRecognizer(string modelPath = "Whisper/ggml-small.bin",
             bool modelInStreamingAssets = true, bool useGpu = false,
-            float stepSec = 1.5f, float lengthSec = 10f)
+            float stepSec = 1.5f, float lengthSec = 10f, bool verboseLog = true)
         {
+            _verboseLog = verboseLog;
             _modelPath = modelPath;
             _modelInStreamingAssets = modelInStreamingAssets;
             _useGpu = useGpu;
@@ -89,7 +94,9 @@ namespace Barabashka.Voice.WhisperEngine
                 _mic.loop = true;     // иначе запись остановится через maxLengthSec
                 _mic.echo = false;    // иначе записанная речь проигрывается обратно
                 _mic.useVad = true;
-                _mic.chunksLengthSec = 0.5f;
+                _mic.chunksLengthSec = 0.25f;  // чаще проверяем, закончил ли пользователь говорить
+                _mic.vadLastSec = 0.8f;        // сколько тишины нужно, чтобы считать фразу законченной
+                _mic.OnVadChanged += HandleVad;
 
                 _host.SetActive(true);
 
@@ -145,6 +152,19 @@ namespace Barabashka.Voice.WhisperEngine
             // Остановка микрофона сама вызывает StopStream у потока (он подписан на OnRecordStop).
             if (_mic.IsRecording) _mic.StopRecord();
             else _stream.StopStream();
+
+            WatchStop(++_stopGeneration);
+        }
+
+        // Если поток не сообщил о завершении (например, Whisper вернул ошибку на слишком
+        // коротком куске звука), принудительно выходим из состояния остановки,
+        // иначе микрофон больше никогда не включится.
+        private async void WatchStop(int generation)
+        {
+            await Task.Delay(3000);
+            if (_disposed || generation != _stopGeneration || !_stopping) return;
+            Debug.LogWarning("[WhisperRecognizer] Поток не сообщил о завершении, продолжаю принудительно.");
+            HandleStreamFinished(null);
         }
 
         public void Dispose()
@@ -160,6 +180,7 @@ namespace Barabashka.Voice.WhisperEngine
                     _stream.OnSegmentFinished -= HandleSegmentFinished;
                     _stream.OnStreamFinished -= HandleStreamFinished;
                 }
+                if (_mic != null) _mic.OnVadChanged -= HandleVad;
                 if (_mic != null && _mic.IsRecording) _mic.StopRecord();
             }
             catch (Exception e)
@@ -177,6 +198,7 @@ namespace Barabashka.Voice.WhisperEngine
             if (!_options.EmitPartialResults) return;
             string text = Clean(segment);
             if (text == null) return;
+            Log("partial: " + text);
             Action<Utterance> handler = OnPartial;
             if (handler != null) handler(MakeUtterance(text, false));
         }
@@ -185,13 +207,26 @@ namespace Barabashka.Voice.WhisperEngine
         {
             string text = Clean(segment);
             if (text == null) return;
+            Log("FINAL: " + text);
             Action<Utterance> handler = OnFinal;
             if (handler != null) handler(MakeUtterance(text, true));
+        }
+
+        private void HandleVad(bool speechDetected)
+        {
+            Log(speechDetected ? "VAD: речь началась" : "VAD: речь закончилась");
+        }
+
+        private void Log(string message)
+        {
+            if (!_verboseLog) return;
+            Debug.Log("[Whisper t=" + _clock.Elapsed.TotalSeconds.ToString("F2", CultureInfo.InvariantCulture) + "] " + message);
         }
 
         private void HandleStreamFinished(string finalText)
         {
             _stopping = false;
+            if (_listening) return; // запоздалое событие: микрофон уже снова включён
             if (_pendingStart && !_disposed)
             {
                 _pendingStart = false;

@@ -3,14 +3,17 @@
 Общее: читай только указанные файлы; после правок проверь консоль Unity; затем git add/commit/push по AGENTS.md. Файлы создавай инструментами записи, не через терминал.
 
 ## Сделано
-- T1 Contracts + App (v1). T2/T3 asmdef Core, адаптер IBrain, AgentManager.SendUtterance (v2).
-- T6 WhisperRecognizer, VoiceInputChannel, VoiceBootstrap (v3).
+- T1-T3 Contracts, asmdef, адаптер IBrain, AgentManager.SendUtterance.
+- T4 старый мост отключён. T6 Whisper: WhisperRecognizer, VoiceInputChannel, VoiceBootstrap.
+- T7 (частично): WindowsSystemTts, SpeechCoordinator, пауза микрофона на время речи.
 
-## T4. Отключить старый голосовой мост (обязательно перед T6)
-В `AgentVoiceBridge.cs` закомментировать вызов `StartBackgroundSTT();` в методе `SetState`. Критерий: в Play Mode нет процессов `powershell.exe`.
+## T7б. Озвучка ответов агента  [ЖДЁТ АРХИТЕКТОРА]
+Нужны AgentCommandRouter.cs и AgentUIManager.cs: в Core добавляется событие "агент сказал" (текст + язык), Composition подписывает на него SpeechCoordinator.Say. Включая ответы команд (время).
+
+## T7в. Android TTS
+Реализация ITextToSpeech через android.speech.tts (AndroidJavaObject) под #if UNITY_ANDROID.
 
 ## T5. IsolatedBrain на данных
-Вынести фразы из `IsolatedBrain.cs` в `Assets/StreamingAssets/lang/ru/intents.json`; читать через `ILanguagePackProvider`. Исправить совпадение «час» (срабатывает на «сейчас», «частота»): искать по границам слов. Добавить английские шаблоны.
+Фразы из IsolatedBrain в StreamingAssets/lang/ru/intents.json; исправить совпадение «час»; английские шаблоны.
 
-## T7. Озвучка (ITextToSpeech)
-Выбор движка (Piper / системный), пауза распознавания на время речи агента (StopListening на OnStarted, StartListening на OnFinished).
+## Фаза 2. LocalOllamaBrain : IBrain
