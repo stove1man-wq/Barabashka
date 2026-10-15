@@ -45,6 +45,24 @@ public class AgentManager : MonoBehaviour
     /// Промежуточные реплики (IsFinal=false) только показываются в статусе.
     /// Вызывать только из главного потока (из фонового - через IMainThread.Post).
     /// </summary>
+    /// <summary>
+    /// Temporary diagnostic mode: display Whisper transcription without executing commands.
+    /// </summary>
+    public void ShowRecognizedVoiceText(Utterance utterance)
+    {
+        if (utterance == null || _uiManager == null || string.IsNullOrWhiteSpace(utterance.Text))
+            return;
+
+        if (!utterance.IsFinal)
+        {
+            _uiManager.SetStatus("Recognizing: " + utterance.Text);
+            return;
+        }
+
+        _uiManager.AddUserMessage(utterance.Text);
+        _uiManager.SetStatus("Transcription test mode: voice command not executed");
+        Debug.Log("[Whisper Transcription]: " + utterance.Text);
+    }
     public async void SendUtterance(Utterance utterance)
     {
         if (utterance == null || _brain == null || _router == null) return;
