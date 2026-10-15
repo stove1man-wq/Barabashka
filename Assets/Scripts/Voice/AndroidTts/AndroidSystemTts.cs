@@ -7,7 +7,6 @@ using UnityEngine;
 
 namespace Barabashka.Voice.AndroidTts
 {
-    /// <summary>Android system TextToSpeech provider.</summary>
     public sealed class AndroidSystemTts : ITextToSpeech
     {
         private AndroidJavaObject _tts;
@@ -27,6 +26,7 @@ namespace Barabashka.Voice.AndroidTts
             {
                 _initialized = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 _tts = new AndroidJavaObject("android.speech.tts.TextToSpeech", activity, new InitListener(this));
+                _tts.Call("setOnUtteranceProgressListener", new ProgressListener(this));
             }
         }
 
@@ -46,16 +46,11 @@ namespace Barabashka.Voice.AndroidTts
                 _speech = completion;
                 string lang = string.IsNullOrWhiteSpace(languageCode) || languageCode == "auto" ? "ru-RU" : languageCode;
                 using (var localeClass = new AndroidJavaClass("java.util.Locale"))
-                {
-                    AndroidJavaObject locale = localeClass.CallStatic<AndroidJavaObject>("forLanguageTag", lang);
+                using (var locale = localeClass.CallStatic<AndroidJavaObject>("forLanguageTag", lang))
                     _tts.Call<int>("setLanguage", locale);
-                    locale.Dispose();
-                }
-                using (var paramsBundle = new AndroidJavaObject("android.os.Bundle"))
-                {
-                    paramsBundle.Call<int>("putString", "utteranceId", Guid.NewGuid().ToString("N"));
-                    _tts.Call<int>("speak", text, 0, paramsBundle, "barabashka");
-                }
+
+                using (var bundle = new AndroidJavaObject("android.os.Bundle"))
+                    _tts.Call<int>("speak", text, 0, bundle, "barabashka");
             }
 
             using (ct.Register(Stop))
@@ -88,6 +83,34 @@ namespace Barabashka.Voice.AndroidTts
                 _speech = null;
             }
             if (_tts != null) _tts.Call<int>("stop");
+        }
+
+        private void CompleteSpeech(bool cancelled)
+        {
+            TaskCompletionSource<bool> completion;
+            lock (_gate)
+            {
+                completion = _speech;
+                _speech = null;
+            }
+            if (completion == null) return;
+            if (cancelled) completion.TrySetCanceled();
+            else completion.TrySetResult(true);
+            Action handler = OnFinished;
+            if (handler != null) handler();
+        }
+
+        private sealed class ProgressListener : AndroidJavaProxy
+        {
+            private readonly AndroidSystemTts _owner;
+            public ProgressListener(AndroidSystemTts owner) : base("android.speech.tts.UtteranceProgressListener") => _owner = owner;
+            public void onStart(string utteranceId)
+            {
+                Action handler = _owner.OnStarted;
+                if (handler != null) handler();
+            }
+            public void onDone(string utteranceId) => _owner.CompleteSpeech(false);
+            public void onError(string utteranceId) => _owner.CompleteSpeech(false);
         }
 
         private sealed class InitListener : AndroidJavaProxy
