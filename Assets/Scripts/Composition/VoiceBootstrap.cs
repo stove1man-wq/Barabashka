@@ -58,6 +58,7 @@ namespace Barabashka.Composition
                     return;
                 }
 
+                _agent.ResponseReady += HandleAgentResponse;
                 _tts = CreateTts();
 
                 _recognizer = CreateRecognizer();
@@ -75,8 +76,7 @@ namespace Barabashka.Composition
                 _channel.Start();
                 Debug.Log("[Voice] Распознавание (" + _recognizer.Id + ") готово, слушаю микрофон.");
 
-                // Временная проверка озвучки; уберём, когда ответы агента начнут озвучиваться сами.
-                _speech.Say("Голосовой ввод готов.", "ru");
+                Debug.Log("[Voice] Голосовой цикл готов: финальная реплика передаётся агенту, ответы озвучиваются.");
             }
             catch (OperationCanceledException)
             {
@@ -113,11 +113,19 @@ namespace Barabashka.Composition
 
         private void Apply(Utterance utterance)
         {
-            if (_agent != null) _agent.ShowRecognizedVoiceText(utterance);
+            if (_agent != null) _agent.SendUtterance(utterance);
+        }
+
+        private void HandleAgentResponse(AgentResponse response)
+        {
+            if (_speech == null || response == null || string.IsNullOrWhiteSpace(response.Text)) return;
+            string language = string.IsNullOrWhiteSpace(response.LanguageCode) ? Language : response.LanguageCode;
+            _speech.Say(response.Text, language);
         }
 
         private void OnDestroy()
         {
+            if (_agent != null) _agent.ResponseReady -= HandleAgentResponse;
             _cts.Cancel();
             if (_channel != null)
             {
