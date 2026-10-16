@@ -41,27 +41,25 @@ public class AgentManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Единая точка входа для любого канала ввода (текст, голос).
-    /// Промежуточные реплики (IsFinal=false) только показываются в статусе.
-    /// Вызывать только из главного потока (из фонового - через IMainThread.Post).
-    /// </summary>
-    /// <summary>
-    /// Temporary diagnostic mode: display Whisper transcription without executing commands.
+    /// Handles voice recognition results.
+    /// Partial results (IsFinal=false) are shown in status only.
+    /// Final results (IsFinal=true) are processed through SendUtterance like text input.
     /// </summary>
     public void ShowRecognizedVoiceText(Utterance utterance)
     {
-        if (utterance == null || _uiManager == null || string.IsNullOrWhiteSpace(utterance.Text))
+        if (utterance == null || string.IsNullOrWhiteSpace(utterance.Text))
             return;
 
         if (!utterance.IsFinal)
         {
-            _uiManager.SetStatus("Recognizing: " + utterance.Text);
+            // Partial result: only update status, don't add to chat
+            if (_uiManager != null)
+                _uiManager.SetStatus("Слышу: " + utterance.Text);
             return;
         }
 
-        _uiManager.AddUserMessage(utterance.Text);
-        _uiManager.SetStatus("Transcription test mode: voice command not executed");
-        Debug.Log("[Whisper Transcription]: " + utterance.Text);
+        // Final result: process through the same pipeline as text input
+        SendUtterance(utterance);
     }
     public async void SendUtterance(Utterance utterance)
     {

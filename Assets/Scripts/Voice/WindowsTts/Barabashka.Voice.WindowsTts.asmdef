@@ -1,0 +1,14 @@
+{
+    "name": "Barabashka.Voice.WindowsTts",
+    "rootNamespace": "Barabashka.Voice.WindowsTts",
+    "references": [ "Barabashka.Contracts" ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

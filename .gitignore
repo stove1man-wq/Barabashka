@@ -1,4 +1,4 @@
-﻿# Unity
+# Unity
 [Ll]ibrary/
 [Tt]emp/
 [Oo]bj/
@@ -32,11 +32,7 @@ Recordings/
 .DS_Store
 Thumbs.db
 
-Assets/StreamingAssets/Whisper/
-Assets/StreamingAssets/Whisper.meta
 
-Assets/StreamingAssets/Whisper/
-Assets/StreamingAssets/Whisper.meta
 
 # Speech models (too large for GitHub, see docs)
 /Assets/StreamingAssets/sherpa-onnx/models/
