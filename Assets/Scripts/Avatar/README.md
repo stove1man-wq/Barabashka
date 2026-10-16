@@ -1,34 +1,35 @@
 # Barabashka avatar prototype
 
-This branch adds a first runtime-generated visual prototype at
-`Assets/Scripts/Avatar/BarabashkaAvatarPrototype.cs`.
+This branch adds an isolated first runtime-generated visual prototype and its mode/event adapters under `Assets/Scripts/Avatar/`.
 
-## Scope
+## Components
 
-- Creates a stylized glowing blue/violet spirit from Unity primitives.
-- Adds large eyes, a signature luminous curl, a mouth, arms, and small glow specks.
-- Animates idle floating, blinking, head movement, and simple state-specific reactions.
-- Exposes `SetState(AvatarState)` so a future event bridge can drive the character.
+- `BarabashkaAvatarPrototype.cs`: procedural placeholder spirit, idle motion, blinking, and state-specific reactions.
+- `AdaptiveAvatarLayout.cs`: configurable smooth transitions between Icon, Voice, and Workspace presentation modes. Positions/scales are Inspector settings and must be calibrated in the target scene.
+- `BarabashkaAvatarEventBridge.cs`: adapter methods for agent/voice events and mode switches. It does not subscribe to project events automatically.
 
 ## Safe integration
 
-This is intentionally additive. It does **not** replace `AvatarVisualizer`, change existing scenes, or connect to production agent events. Attach the component to an empty GameObject in a disposable test scene to review the appearance before deciding whether to integrate it.
+This is additive. It does **not** replace `AvatarVisualizer`, modify existing scenes, or connect itself to production agent events. Add the components to a disposable test scene first and wire references in the Inspector.
 
-Example state call:
+Example calls:
 
 ```csharp
 avatar.SetState(BarabashkaAvatarPrototype.AvatarState.Listening);
 avatar.SetState(BarabashkaAvatarPrototype.AvatarState.Thinking);
 avatar.SetState(BarabashkaAvatarPrototype.AvatarState.Speaking);
+layout.SetMode(AdaptiveAvatarLayout.PresentationMode.Workspace);
 ```
 
-## Known prototype limitations
+## Known limitations
 
-- This is a procedural placeholder, not the final artist-authored rigged 3D asset.
-- Speaking mouth motion is illustrative; it is not yet synchronized to phonemes or audio amplitude.
-- No project scenes, prefabs, materials, or agent logic are changed.
+- The model is procedural placeholder geometry, not the final artist-authored rigged 3D asset.
+- Speaking mouth motion is illustrative and is not synchronized to phonemes or audio amplitude.
+- The layout controller uses local Transform coordinates; it is not yet a Canvas/RectTransform layout and its positions must be tuned in the actual scene.
+- Event bridge methods must be connected to verified event points in the existing voice/agent modules. Do not invoke them on a timer or fake task progress.
+- No scene or existing production logic has been changed.
 - Unity compilation and Android performance have not yet been verified in the local Unity editor.
 
-## Next implementation step
+## Next step
 
-Review this prototype in Unity, then replace primitive geometry with a modeled/rigged character while preserving the public state interface. Connect state changes through an event bridge and implement the three adaptive UI modes separately.
+Open a disposable Unity test scene, attach the components, assign references, and review appearance and transitions. Then replace primitive geometry with a proper rigged asset and connect real event sources.
