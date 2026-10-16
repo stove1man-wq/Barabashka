@@ -69,6 +69,7 @@ namespace Barabashka.Composition
                     _cts.Token);
 
                 _speech = new SpeechCoordinator(_recognizer, _tts);
+                AgentCommandRouter.ResponseShown += HandleAgentResponse;
 
                 _channel = new VoiceInputChannel(_recognizer);
                 _channel.OnUtterance += HandleUtterance;
@@ -116,8 +117,44 @@ namespace Barabashka.Composition
             if (_agent != null) _agent.ShowRecognizedVoiceText(utterance);
         }
 
+        // Ответ агента озвучивается, только если вопрос был задан голосом.
+        private void HandleAgentResponse(string text)
+        {
+            if (AgentManager.LastInputSource != InputSource.Voice) return;
+
+            string speech = SpeechText(text);
+            IMainThread main = MainThreadDispatcher.Instance;
+            if (main == null) SpeakNow(speech);
+            else main.Post(() => SpeakNow(speech));
+        }
+
+        private void SpeakNow(string speech)
+        {
+            if (_speech != null && !string.IsNullOrWhiteSpace(speech)) _speech.Say(speech, "ru");
+        }
+
+        // Готовит текст для озвучки: без переводов строк, скобок со сроками и служебного "UTC".
+        private static string SpeechText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+
+            string result = System.Text.RegularExpressions.Regex.Replace(text, @"\s*\([^)]*\)", string.Empty);
+            result = result.Replace("UTC", string.Empty)
+                           .Replace("\r", " ")
+                           .Replace("\n", ". ")
+                           .Replace("«", string.Empty)
+                           .Replace("»", string.Empty);
+            result = System.Text.RegularExpressions.Regex.Replace(result, @"([:;,.])\s*\.", "$1");
+            result = System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ").Trim();
+
+            const int maxChars = 300;
+            if (result.Length > maxChars) result = result.Substring(0, maxChars).TrimEnd() + "…";
+            return result;
+        }
+
         private void OnDestroy()
         {
+            AgentCommandRouter.ResponseShown -= HandleAgentResponse;
             _cts.Cancel();
             if (_channel != null)
             {

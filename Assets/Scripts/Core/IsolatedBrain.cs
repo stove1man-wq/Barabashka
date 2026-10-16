@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 public class IsolatedBrain : IAgentBrain
@@ -19,6 +21,11 @@ public class IsolatedBrain : IAgentBrain
         { "десятый", 10 }, { "десятая", 10 }, { "десятую", 10 }, { "десятой", 10 }
     };
 
+    // «переименуй задачу 2 в купить хлеб», «измени задачу вторую на позвонить маме»
+    private static readonly Regex RenamePattern = new Regex(
+        @"^\s*(?:переименуй|измени|поменяй)\s+задачу\s+(?:номер\s+)?(\S+)\s+(?:в|на)\s+(.+?)\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     public Task<string> ProcessMessageAsync(string userText)
     {
         if (string.IsNullOrWhiteSpace(userText))
@@ -26,17 +33,36 @@ public class IsolatedBrain : IAgentBrain
 
         string text = userText.Trim();
         string lower = Normalize(text);
+        // Числа словами -> цифры («задачу два» -> «задачу 2»): распознавание речи часто даёт слова.
+        string lowerNum = RuNumbers.Replace(lower);
 
         string title = ExtractTaskTitle(text, lower);
         if (title != null)
-            return Task.FromResult("COMMAND:TASK_ADD|" + Uri.EscapeDataString(title));
+        {
+            DateTime? due;
+            string cleanTitle = AgentDates.SplitDue(title, DateTime.Now, out due);
+            string addCommand = "COMMAND:TASK_ADD|" + Uri.EscapeDataString(cleanTitle);
+            if (due.HasValue)
+                addCommand += "|" + due.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            return Task.FromResult(addCommand);
+        }
+
+        Match rename = RenamePattern.Match(text);
+        if (rename.Success)
+        {
+            string renameNumber = ExtractTaskNumber(RuNumbers.Replace(Normalize(rename.Groups[1].Value)));
+            string newTitle = rename.Groups[2].Value.Trim().TrimEnd('.', '!', '?');
+            if (renameNumber == null || newTitle.Length == 0)
+                return Task.FromResult("Не понял, какую задачу переименовать. Скажите: «переименуй задачу 2 в …».");
+            return Task.FromResult("COMMAND:TASK_RENAME|" + renameNumber + "|" + Uri.EscapeDataString(newTitle));
+        }
 
         if (IsTaskListRequest(lower))
             return Task.FromResult("COMMAND:TASK_LIST");
 
         if (MentionsTask(lower) && ContainsAny(lower, "удал", "убер", "убрать", "сотри", "удалить"))
         {
-            string number = ExtractTaskNumber(lower);
+            string number = ExtractTaskSpec(lowerNum);
             return Task.FromResult(number == null
                 ? "Не понял, какую задачу удалить. Назови её номер или попроси показать список задач."
                 : "COMMAND:TASK_DELETE|" + number);
@@ -44,11 +70,19 @@ public class IsolatedBrain : IAgentBrain
 
         if (MentionsTask(lower) && ContainsAny(lower, "заверш", "выполн", "законч", "готов", "отметь", "сделал", "сделана", "сделано"))
         {
-            string number = ExtractTaskNumber(lower);
+            string number = ExtractTaskSpec(lowerNum);
             return Task.FromResult(number == null
                 ? "Не понял, какую задачу отметить выполненной. Назови её номер или попроси показать список задач."
                 : "COMMAND:TASK_DONE|" + number);
         }
+
+        string calculation;
+        if (AgentCalculator.TryAnswer(text, out calculation))
+            return Task.FromResult(calculation);
+
+        if (ContainsAny(lower, "дату", "дата", "какое число", "какое сегодня число", "число сегодня",
+                "день недели", "какой сегодня день", "какой день", "что за день"))
+            return Task.FromResult("COMMAND:DATE");
 
         if (lower.Contains("привет") || lower.Contains("здравствуй"))
             return Task.FromResult("Приветствую! Я ваш независимый ИИ-агент. Рад помочь!");
@@ -62,7 +96,7 @@ public class IsolatedBrain : IAgentBrain
         if (lower.Contains("браузер") || lower.Contains("гитхаб"))
             return Task.FromResult("COMMAND:OPEN_URL|https://github.com");
 
-        return Task.FromResult("Пока я умею отвечать на базовые запросы и управлять локальным списком задач. Можно сказать: «добавь задачу …», «покажи мои задачи», «удали первую задачу» или «отметь задачу 2 выполненной».");
+        return Task.FromResult("Пока я умею отвечать на базовые запросы и управлять локальным списком задач. Можно сказать: «добавь задачу … на завтра», «покажи мои задачи», «отметь задачу 2 выполненной», «переименуй задачу 1 в …», «удали первую и вторую задачу», «какое сегодня число» или «сколько будет 15 процентов от 2300».");
     }
 
     private static string Normalize(string value)
@@ -118,6 +152,34 @@ public class IsolatedBrain : IAgentBrain
     private static bool MentionsTask(string text)
     {
         return ContainsAny(text, "задач", "дело", "дела", "делу", "задачу", "задаче");
+    }
+
+    // Номера задач из фразы: «первую и вторую» / «задачи 1 и 3» -> "1,2" / "1,3"; «все задачи» -> "ALL".
+    private static string ExtractTaskSpec(string normalizedText)
+    {
+        string[] words = normalizedText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (string word in words)
+            if (word == "все" || word == "всё" || word == "всех") return "ALL";
+
+        var numbers = new List<int>();
+        foreach (string word in words)
+        {
+            int ordinal;
+            if (OrdinalNumbers.TryGetValue(word, out ordinal))
+            {
+                if (!numbers.Contains(ordinal)) numbers.Add(ordinal);
+                continue;
+            }
+
+            int number;
+            if (word.Length > 0 && int.TryParse(word, out number) && number > 0 && !numbers.Contains(number))
+                numbers.Add(number);
+        }
+
+        if (numbers.Count == 0) return null;
+        numbers.Sort();
+        return string.Join(",", numbers);
     }
 
     private static string ExtractTaskNumber(string normalizedText)

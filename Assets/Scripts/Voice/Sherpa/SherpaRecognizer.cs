@@ -25,7 +25,8 @@ namespace Barabashka.Voice.SherpaEngine
         private const float SpeechRms = 0.012f;      // громкость, выше которой считаем, что идёт речь
         private const float EndSilenceSec = 0.9f;    // пауза, после которой фраза считается законченной
         private const float PreRollSec = 0.35f;      // сколько звука до начала речи добавляем к фразе
-        private const float MinSpeechSec = 0.25f;    // более короткие всплески игнорируем
+        private const float MinSpeechSec = 0.10f;    // более короткие всплески игнорируем (короткое «да» ~0.2 с)
+        private const float MinClipSec = 1.0f;       // очень короткие фразы дополняем тишиной: так модель распознаёт их надёжнее
         private const float MaxSegmentSec = 25f;     // принудительно режем слишком длинную фразу
 
         private readonly string _asrModelId;
@@ -272,6 +273,11 @@ namespace Barabashka.Voice.SherpaEngine
             if (_inSpeech && _speechSec >= MinSpeechSec && _current.Count > 0)
             {
                 Log("речь закончилась, длина " + (_current.Count / (float)_segmentRate).ToString("F1", CultureInfo.InvariantCulture) + " с");
+                // Короткие фразы («да», «нет») дополняем тишиной до минимальной длины.
+                int minSamples = (int)(MinClipSec * _segmentRate);
+                if (_current.Count < minSamples)
+                    _current.AddRange(new float[minSamples - _current.Count]);
+
                 _queue.Enqueue(new Segment { Samples = _current.ToArray(), SampleRate = _segmentRate });
                 if (!_pumping) PumpAsync();
             }

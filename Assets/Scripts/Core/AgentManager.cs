@@ -7,6 +7,9 @@ public class AgentManager : MonoBehaviour
 {
     public string testInputMessage;
 
+    /// <summary>Источник последнего запроса: голосовые запросы озвучиваются, текстовые - нет.</summary>
+    public static InputSource LastInputSource { get; private set; }
+
     private IBrain _brain;
     private AgentCommandRouter _router;
     private AgentUIManager _uiManager;
@@ -75,6 +78,8 @@ public class AgentManager : MonoBehaviour
         string message = utterance.Text;
         if (string.IsNullOrWhiteSpace(message)) return;
 
+        LastInputSource = utterance.Source;
+
         int requestVersion = ++_requestVersion;
         _requestRunning = true;
 
@@ -91,6 +96,13 @@ public class AgentManager : MonoBehaviour
         Debug.Log("[User Input]: " + message);
         try
         {
+            // Если агент ждёт подтверждения («Удалить задачу? да/нет»), эта фраза - ответ на вопрос.
+            if (_router.TryHandlePending(message))
+            {
+                if (_uiManager != null) _uiManager.SetStatus("Готово");
+                return;
+            }
+
             AgentResponse response = await _brain.RespondAsync(utterance, token);
             if (requestVersion != _requestVersion) return;
 

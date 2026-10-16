@@ -45,14 +45,28 @@ public class AgentCommandRouter : MonoBehaviour
                 }
                 else ShowResponse("Не удалось открыть ссылку: допустимы только HTTP и HTTPS.");
             }
+            else if (command == "DATE")
+                ShowResponse(AgentDates.Today(DateTime.Now));
             else if (command.StartsWith("TASK_ADD|", StringComparison.Ordinal))
-                ShowResponse(AgentToolset.AddTask(command.Substring("TASK_ADD|".Length)));
+            {
+                // TASK_ADD|<название>[|<срок yyyy-MM-dd>]
+                string[] parts = command.Substring("TASK_ADD|".Length).Split('|');
+                ShowResponse(AgentToolset.AddTask(parts[0], parts.Length > 1 ? parts[1] : null));
+            }
             else if (command == "TASK_LIST")
                 ShowResponse(AgentToolset.ListTasks());
             else if (command.StartsWith("TASK_DONE|", StringComparison.Ordinal))
                 ShowResponse(AgentToolset.CompleteTask(command.Substring("TASK_DONE|".Length)));
+            else if (command.StartsWith("TASK_RENAME|", StringComparison.Ordinal))
+            {
+                // TASK_RENAME|<номер>|<новое название>
+                string[] parts = command.Substring("TASK_RENAME|".Length).Split('|');
+                ShowResponse(parts.Length < 2
+                    ? "Не понял, как переименовать задачу."
+                    : AgentToolset.RenameTask(parts[0], parts[1]));
+            }
             else if (command.StartsWith("TASK_DELETE|", StringComparison.Ordinal))
-                ShowResponse(AgentToolset.DeleteTask(command.Substring("TASK_DELETE|".Length)));
+                AskToConfirmDelete(command.Substring("TASK_DELETE|".Length));
             else
                 ShowResponse("Команда не поддерживается: " + command);
 
@@ -70,8 +84,85 @@ public class AgentCommandRouter : MonoBehaviour
             PlayAnimation("Idle");
     }
 
+    // A06: удаление необратимо, поэтому перед ним агент просит подтверждение.
+    private const float ConfirmTimeoutSec = 30f;
+    private string _pendingDeleteIndex;
+    private float _pendingUntil;
+
+    private void AskToConfirmDelete(string index)
+    {
+        string what = AgentToolset.DescribeTasks(index);
+        if (what == null)
+        {
+            // Номера нет: пусть инструмент сам объяснит ошибку.
+            ShowResponse(AgentToolset.DeleteTask(index));
+            return;
+        }
+
+        Debug.Log("[Confirm] Жду подтверждения удаления: " + index + " (" + what + ")");
+        _pendingDeleteIndex = index;
+        _pendingUntil = Time.unscaledTime + ConfirmTimeoutSec;
+        // Просим ответ чуть длиннее, чем «да»: так распознавание надёжнее.
+        ShowResponse("Удалить " + what + "? Скажите «да, удалить» или «нет, отмена».");
+    }
+
+    /// <summary>
+    /// Если агент ждёт подтверждения, разбирает ответ «да»/«нет». Возвращает true, когда фраза
+    /// была ответом на вопрос (и дальше её обрабатывать не нужно). Любая другая фраза отменяет ожидание.
+    /// </summary>
+    public bool TryHandlePending(string userText)
+    {
+        if (_pendingDeleteIndex == null) return false;
+
+        Debug.Log("[Confirm] Получен ответ: «" + userText + "»");
+        string index = _pendingDeleteIndex;
+        bool expired = Time.unscaledTime > _pendingUntil;
+        _pendingDeleteIndex = null;
+        if (expired) return false;
+
+        string[] words = (userText ?? string.Empty).ToLowerInvariant()
+            .Split(new[] { ' ', ',', '.', '!', '?', ';', ':' }, StringSplitOptions.RemoveEmptyEntries);
+
+        // Длинная фраза - это новая команда, а не короткое «да»/«нет».
+        if (words.Length == 0 || words.Length > 4) return false;
+
+        bool no = false;
+        bool yes = false;
+        foreach (string w in words)
+        {
+            if (w == "нет" || w == "не" || w == "отмена" || w == "отмени" || w == "стоп" || w == "отбой") no = true;
+            if (w == "да" || w == "ага" || w == "угу" || w == "конечно" || w == "давай" ||
+                w == "подтверждаю" || w == "удаляй" || w == "удалить" || w == "ок" || w == "окей" ||
+                w == "верно" || w == "точно" || w == "хорошо") yes = true;
+        }
+
+        if (no)
+        {
+            ShowResponse("Хорошо, ничего не удаляю.");
+            return true;
+        }
+        if (yes)
+        {
+            Debug.Log("[Confirm] Подтверждено, удаляю: " + index);
+            ShowResponse(AgentToolset.DeleteTask(index));
+            return true;
+        }
+
+        // Ответ не похож на «да»/«нет»: считаем, что пользователь передумал, и разбираем фразу как обычную.
+        return false;
+    }
+
+    /// <summary>Вызывается каждый раз, когда агент показал ответ пользователю (для озвучки и т.п.).</summary>
+    public static event Action<string> ResponseShown;
+
     private void ShowResponse(string text)
     {
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            try { ResponseShown?.Invoke(text); }
+            catch (Exception ex) { Debug.LogException(ex); }
+        }
+
         if (_uiManager == null) _uiManager = GetComponent<AgentUIManager>();
         if (_uiManager != null) _uiManager.UpdateResponseText(text);
         else Debug.LogWarning("[AgentCommandRouter] AgentUIManager is unavailable. Response: " + text);
