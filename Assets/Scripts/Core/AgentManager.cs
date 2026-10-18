@@ -32,7 +32,7 @@ public class AgentManager : MonoBehaviour
 
     private void Awake()
     {
-        _brain = new LegacyBrainAdapter(new IsolatedBrain());
+        _brain = new HybridBrain(new LegacyBrainAdapter(new IsolatedBrain()), new OllamaClient());
         _router = GetComponent<AgentCommandRouter>();
 
         if (_router == null)

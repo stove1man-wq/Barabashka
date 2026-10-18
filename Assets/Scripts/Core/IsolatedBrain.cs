@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 public class IsolatedBrain : IAgentBrain
 {
+    /// <summary>Начало стандартного ответа «не понял»: по нему HybridBrain отличает непонятую фразу.</summary>
+    public const string UnknownReplyPrefix = "Пока я умею отвечать на базовые запросы";
+
     private static readonly Dictionary<string, int> OrdinalNumbers = new Dictionary<string, int>(StringComparer.Ordinal)
     {
         { "первый", 1 }, { "первая", 1 }, { "первую", 1 }, { "первой", 1 }, { "первого", 1 }, { "первом", 1 },
@@ -96,7 +99,7 @@ public class IsolatedBrain : IAgentBrain
         if (lower.Contains("браузер") || lower.Contains("гитхаб"))
             return Task.FromResult("COMMAND:OPEN_URL|https://github.com");
 
-        return Task.FromResult("Пока я умею отвечать на базовые запросы и управлять локальным списком задач. Можно сказать: «добавь задачу … на завтра», «покажи мои задачи», «отметь задачу 2 выполненной», «переименуй задачу 1 в …», «удали первую и вторую задачу», «какое сегодня число» или «сколько будет 15 процентов от 2300».");
+        return Task.FromResult(UnknownReplyPrefix + " и управлять локальным списком задач. Можно сказать: «добавь задачу … на завтра», «покажи мои задачи», «отметь задачу 2 выполненной», «переименуй задачу 1 в …», «удали первую и вторую задачу», «какое сегодня число» или «сколько будет 15 процентов от 2300».");
     }
 
     private static string Normalize(string value)

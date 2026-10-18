@@ -1,0 +1,729 @@
+diff --git a/Assets/Scripts/Core/AgentManager.cs b/Assets/Scripts/Core/AgentManager.cs
+index f34190c..a4f8856 100644
+--- a/Assets/Scripts/Core/AgentManager.cs
++++ b/Assets/Scripts/Core/AgentManager.cs
+@@ -32,7 +32,7 @@ public class AgentManager : MonoBehaviour
+ 
+     private void Awake()
+     {
+-        _brain = new LegacyBrainAdapter(new IsolatedBrain());
++        _brain = new HybridBrain(new LegacyBrainAdapter(new IsolatedBrain()), new OllamaClient());
+         _router = GetComponent<AgentCommandRouter>();
+ 
+         if (_router == null)
+diff --git a/Assets/Scripts/Core/AgentToolCatalog.cs b/Assets/Scripts/Core/AgentToolCatalog.cs
+new file mode 100644
+index 0000000..20a161b
+--- /dev/null
++++ b/Assets/Scripts/Core/AgentToolCatalog.cs
+@@ -0,0 +1,150 @@
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.Text;
++using System.Text.RegularExpressions;
++
++/// <summary>
++/// Каталог инструментов, которые может вызвать языковая модель. Здесь же два действия:
++/// описать инструменты для модели (подсказка) и превратить её вызов в команду роутера «TASK_ADD|…».
++/// Модель не выполняет ничего сама: любая команда проходит ту же проверку, что и команда от правил
++/// (удаление - с подтверждением, ссылки - только http/https).
++/// </summary>
++public static class AgentToolCatalog
++{
++    private static readonly string[] WeekDays =
++        { "воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота" };
++
++    private static readonly Regex DigitsPattern = new Regex(@"\d+", RegexOptions.CultureInvariant);
++    private static readonly Regex IsoDatePattern = new Regex(@"^\d{4}-\d{2}-\d{2}$", RegexOptions.CultureInvariant);
++
++    public static string BuildSystemPrompt(DateTime now)
++    {
++        var sb = new StringBuilder();
++        sb.AppendLine("Ты - Барабашка, голосовой помощник на телефоне. Отвечай ТОЛЬКО одним JSON-объектом, без пояснений до и после.");
++        sb.AppendLine("Если просьбу можно выполнить инструментом, верни {\"tool\":\"имя\", ...поля}.");
++        sb.AppendLine("Если это вопрос или обычный разговор, верни {\"reply\":\"ответ по-русски, 1-3 коротких предложения, без списков и markdown\"}.");
++        sb.AppendLine("Инструменты:");
++        sb.AppendLine("- time: назвать время. {\"tool\":\"time\"}");
++        sb.AppendLine("- date: назвать дату и день недели. {\"tool\":\"date\"}");
++        sb.AppendLine("- task_add: добавить задачу. {\"tool\":\"task_add\",\"title\":\"что сделать\",\"due\":\"ГГГГ-ММ-ДД или пустая строка\"}");
++        sb.AppendLine("- task_list: показать задачи. {\"tool\":\"task_list\"}");
++        sb.AppendLine("- task_done: отметить задачи выполненными. {\"tool\":\"task_done\",\"numbers\":\"1,2\"}, все задачи: \"ALL\"");
++        sb.AppendLine("- task_delete: удалить задачи. {\"tool\":\"task_delete\",\"numbers\":\"1\"}");
++        sb.AppendLine("- task_rename: переименовать задачу. {\"tool\":\"task_rename\",\"number\":\"2\",\"title\":\"новое название\"}");
++        sb.AppendLine("- open_url: открыть сайт в браузере. {\"tool\":\"open_url\",\"url\":\"https://...\"}");
++        sb.AppendLine("Номера задач - это номера из списка, который показывает task_list. Если пользователь не назвал номер, верни reply с уточняющим вопросом.");
++        sb.AppendLine("Не выдумывай факты, погоду и новости. Если не знаешь ответа или не можешь это сделать, честно скажи об этом в reply.");
++        sb.AppendLine("Сегодня " + now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ", " + WeekDays[(int)now.DayOfWeek] +
++                      ", время " + now.ToString("HH:mm", CultureInfo.InvariantCulture) + ".");
++        sb.Append("Календарь для сроков: ");
++        for (int i = 0; i < 8; i++)
++        {
++            DateTime d = now.Date.AddDays(i);
++            string label = i == 0 ? "сегодня" : i == 1 ? "завтра" : i == 2 ? "послезавтра" : WeekDays[(int)d.DayOfWeek];
++            if (i > 0) sb.Append("; ");
++            sb.Append(label).Append(" = ").Append(d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
++            if (i < 3) sb.Append(" (").Append(WeekDays[(int)d.DayOfWeek]).Append(')');
++        }
++        sb.Append('.');
++        return sb.ToString();
++    }
++
++    /// <summary>
++    /// Превращает вызов модели в команду роутера (без префикса COMMAND:). Возвращает false и причину, если вызов некорректен.
++    /// </summary>
++    public static bool TryBuildCommand(Dictionary<string, string> args, out string command, out string error)
++    {
++        command = null;
++        error = null;
++        string tool = MiniJson.Get(args, "tool").ToLowerInvariant();
++
++        switch (tool)
++        {
++            case "time":
++                command = "TIME";
++                return true;
++            case "date":
++                command = "DATE";
++                return true;
++            case "task_list":
++                command = "TASK_LIST";
++                return true;
++
++            case "task_add":
++            {
++                string title = MiniJson.Get(args, "title");
++                if (title.Length == 0) { error = "не указано название задачи"; return false; }
++                command = "TASK_ADD|" + Uri.EscapeDataString(title);
++                string due = MiniJson.Get(args, "due");
++                if (IsoDatePattern.IsMatch(due))
++                {
++                    DateTime parsed;
++                    if (DateTime.TryParseExact(due, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out parsed))
++                        command += "|" + due;
++                }
++                return true;
++            }
++
++            case "task_done":
++            case "task_delete":
++            {
++                string spec = NormalizeNumbers(MiniJson.Get(args, "numbers"), MiniJson.Get(args, "number"));
++                if (spec == null) { error = "не указаны номера задач"; return false; }
++                command = (tool == "task_done" ? "TASK_DONE|" : "TASK_DELETE|") + spec;
++                return true;
++            }
++
++            case "task_rename":
++            {
++                string number = NormalizeNumbers(MiniJson.Get(args, "number"), MiniJson.Get(args, "numbers"));
++                string title = MiniJson.Get(args, "title");
++                if (number == null || number == "ALL" || number.Contains(",")) { error = "не указан номер одной задачи"; return false; }
++                if (title.Length == 0) { error = "не указано новое название"; return false; }
++                command = "TASK_RENAME|" + number + "|" + Uri.EscapeDataString(title);
++                return true;
++            }
++
++            case "open_url":
++            {
++                string url = MiniJson.Get(args, "url");
++                Uri parsed;
++                if (url.Length == 0 || url.IndexOf('|') >= 0 || url.IndexOf(' ') >= 0 ||
++                    !Uri.TryCreate(url, UriKind.Absolute, out parsed) ||
++                    (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
++                {
++                    error = "некорректная ссылка";
++                    return false;
++                }
++                command = "OPEN_URL|" + parsed.AbsoluteUri;
++                return true;
++            }
++
++            default:
++                error = "неизвестный инструмент «" + tool + "»";
++                return false;
++        }
++    }
++
++    // «1, 2» / «1 и 2» / «все» / «ALL» -> «1,2» / «ALL»; null, если номеров нет.
++    private static string NormalizeNumbers(string primary, string secondary)
++    {
++        foreach (string source in new[] { primary, secondary })
++        {
++            if (string.IsNullOrWhiteSpace(source)) continue;
++            string lower = source.Trim().ToLowerInvariant();
++            if (lower == "all" || lower == "все" || lower == "всё" || lower == "всех") return "ALL";
++
++            var numbers = new List<int>();
++            foreach (Match m in DigitsPattern.Matches(lower))
++            {
++                int n;
++                if (int.TryParse(m.Value, out n) && n > 0 && !numbers.Contains(n)) numbers.Add(n);
++            }
++            if (numbers.Count == 0) continue;
++            numbers.Sort();
++            return string.Join(",", numbers);
++        }
++        return null;
++    }
++}
+diff --git a/Assets/Scripts/Core/HybridBrain.cs b/Assets/Scripts/Core/HybridBrain.cs
+new file mode 100644
+index 0000000..3d47afe
+--- /dev/null
++++ b/Assets/Scripts/Core/HybridBrain.cs
+@@ -0,0 +1,214 @@
++using System;
++using System.Collections.Generic;
++using System.Diagnostics;
++using System.Threading;
++using System.Threading.Tasks;
++using Barabashka.Contracts;
++using Debug = UnityEngine.Debug;
++
++/// <summary>
++/// Двухступенчатый мозг: сначала быстрые правила (IsolatedBrain), и только если они фразу не поняли,
++/// вопрос уходит языковой модели (Ollama), которая либо вызывает инструмент из AgentToolCatalog, либо отвечает текстом.
++/// Если модель выключена или недоступна, работает как раньше: правила отвечают сами.
++/// Команды для настройки модели вводятся в чате: «/llm».
++/// </summary>
++public sealed class HybridBrain : IBrain
++{
++    private const int MaxHistoryMessages = 8;
++    private const int MaxReplyChars = 600;
++
++    private readonly IBrain _rules;
++    private readonly OllamaClient _llm;
++    private readonly List<KeyValuePair<string, string>> _history = new List<KeyValuePair<string, string>>();
++    private bool _warnedUnavailable;
++
++    public HybridBrain(IBrain rules, OllamaClient llm)
++    {
++        if (rules == null) throw new ArgumentNullException("rules");
++        if (llm == null) throw new ArgumentNullException("llm");
++        _rules = rules;
++        _llm = llm;
++    }
++
++    public string Id { get { return "hybrid"; } }
++    public bool RequiresNetwork { get { return false; } }
++
++    public async Task<AgentResponse> RespondAsync(Utterance input, CancellationToken ct)
++    {
++        string text = input != null && input.Text != null ? input.Text.Trim() : string.Empty;
++
++        if (text.StartsWith("/llm", StringComparison.OrdinalIgnoreCase))
++            return await HandleSettingsCommandAsync(text, input, ct);
++
++        AgentResponse ruleResponse = await _rules.RespondAsync(input, ct);
++        if (!IsUnknown(ruleResponse))
++        {
++            Remember(text, string.IsNullOrEmpty(ruleResponse.Text) ? "Готово." : ruleResponse.Text);
++            return ruleResponse;
++        }
++
++        // Правила не поняли. Слишком короткие обрывки (шум распознавания) модели не отдаём.
++        if (!LlmSettings.Enabled || CountLetters(text) < 3) return ruleResponse;
++
++        try
++        {
++            string content = await _llm.ChatAsync(AgentToolCatalog.BuildSystemPrompt(DateTime.Now), _history, text, true, ct);
++            _warnedUnavailable = false;
++            Debug.Log("[LLM] Ответ модели: " + content);
++
++            AgentResponse answer = Interpret(content, input);
++            if (answer == null) return ruleResponse;
++
++            Remember(text, answer.Command != null ? "Выполнено." : answer.Text);
++            return answer;
++        }
++        catch (OperationCanceledException)
++        {
++            throw;
++        }
++        catch (OllamaException ex)
++        {
++            Debug.LogWarning("[LLM] " + ex.Message);
++            // Подробность показываем один раз подряд, дальше - коротко, чтобы не повторять одно и то же.
++            string note = _warnedUnavailable
++                ? "Не понял запрос, а языковая модель сейчас недоступна."
++                : "Не понял запрос, а языковая модель недоступна. " + ex.Message;
++            _warnedUnavailable = true;
++            return new AgentResponse { Text = note, LanguageCode = input != null ? input.LanguageCode : null };
++        }
++    }
++
++    // Правила сами сообщают, что не поняли фразу, стандартным ответом с этим началом.
++    private static bool IsUnknown(AgentResponse response)
++    {
++        return response != null && string.IsNullOrEmpty(response.Command) && response.Text != null &&
++               response.Text.StartsWith(IsolatedBrain.UnknownReplyPrefix, StringComparison.Ordinal);
++    }
++
++    private static AgentResponse Interpret(string content, Utterance input)
++    {
++        string language = input != null ? input.LanguageCode : null;
++        Dictionary<string, string> fields = MiniJson.ParseFlatObject(content);
++
++        if (fields == null)
++        {
++            // Модель ответила обычным текстом, а не JSON: принимаем как реплику.
++            string plain = Clean(content);
++            return plain.Length == 0 ? null : new AgentResponse { Text = plain, LanguageCode = language };
++        }
++
++        string tool = MiniJson.Get(fields, "tool");
++        if (tool.Length > 0 && !tool.Equals("none", StringComparison.OrdinalIgnoreCase))
++        {
++            string command, error;
++            if (AgentToolCatalog.TryBuildCommand(fields, out command, out error))
++                return new AgentResponse { Command = command, LanguageCode = language };
++
++            Debug.LogWarning("[LLM] Некорректный вызов инструмента: " + error);
++            string fallbackReply = Clean(MiniJson.Get(fields, "reply"));
++            if (fallbackReply.Length > 0) return new AgentResponse { Text = fallbackReply, LanguageCode = language };
++            return new AgentResponse { Text = "Не получилось выполнить: " + error + ". Попробуйте сказать иначе.", LanguageCode = language };
++        }
++
++        string reply = Clean(MiniJson.Get(fields, "reply"));
++        if (reply.Length == 0) reply = Clean(MiniJson.Get(fields, "text"));
++        return reply.Length == 0 ? null : new AgentResponse { Text = reply, LanguageCode = language };
++    }
++
++    // Убираем разметку, которую модели любят добавлять, и ограничиваем длину (ответ могут озвучивать).
++    private static string Clean(string value)
++    {
++        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
++        string text = value.Replace("**", string.Empty).Replace("`", string.Empty).Trim();
++        if (text.Length > MaxReplyChars) text = text.Substring(0, MaxReplyChars).TrimEnd() + "…";
++        return text;
++    }
++
++    private void Remember(string user, string assistant)
++    {
++        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(assistant)) return;
++        _history.Add(new KeyValuePair<string, string>("user", user));
++        _history.Add(new KeyValuePair<string, string>("assistant", assistant));
++        while (_history.Count > MaxHistoryMessages) _history.RemoveAt(0);
++    }
++
++    private static int CountLetters(string text)
++    {
++        int n = 0;
++        foreach (char c in text) if (char.IsLetter(c)) n++;
++        return n;
++    }
++
++    // ---- Настройка в чате: /llm, /llm вкл, /llm выкл, /llm адрес …, /llm модель …, /llm проверка ----
++
++    private async Task<AgentResponse> HandleSettingsCommandAsync(string text, Utterance input, CancellationToken ct)
++    {
++        string[] parts = text.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
++        string action = parts.Length > 1 ? parts[1].ToLowerInvariant() : string.Empty;
++        string value = parts.Length > 2 ? parts[2].Trim() : string.Empty;
++        string reply;
++
++        switch (action)
++        {
++            case "вкл":
++            case "on":
++                LlmSettings.Enabled = true;
++                reply = "Языковая модель включена.";
++                break;
++            case "выкл":
++            case "off":
++                LlmSettings.Enabled = false;
++                reply = "Языковая модель выключена, отвечают только правила.";
++                break;
++            case "адрес":
++            case "url":
++                if (value.Length == 0) { reply = "Укажите адрес: /llm адрес http://192.168.0.5:11434"; break; }
++                if (value.IndexOf("://", StringComparison.Ordinal) < 0) value = "http://" + value;
++                Uri uri;
++                if (!Uri.TryCreate(value, UriKind.Absolute, out uri) ||
++                    (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
++                {
++                    reply = "Не похоже на адрес. Пример: /llm адрес http://192.168.0.5:11434";
++                    break;
++                }
++                LlmSettings.Url = value;
++                reply = "Адрес Ollama: " + LlmSettings.Url;
++                break;
++            case "модель":
++            case "model":
++                if (value.Length == 0) { reply = "Укажите имя модели: /llm модель llama3.1:8b"; break; }
++                LlmSettings.Model = value;
++                reply = "Модель: " + LlmSettings.Model;
++                break;
++            case "проверка":
++            case "test":
++                reply = await TestAsync(ct);
++                break;
++            default:
++                reply = "Языковая модель: " + (LlmSettings.Enabled ? "включена" : "выключена") +
++                        "\nАдрес: " + LlmSettings.Url + "\nМодель: " + LlmSettings.Model +
++                        "\nКоманды: /llm вкл, /llm выкл, /llm адрес …, /llm модель …, /llm проверка";
++                break;
++        }
++
++        return new AgentResponse { Text = reply, LanguageCode = input != null ? input.LanguageCode : null };
++    }
++
++    private async Task<string> TestAsync(CancellationToken ct)
++    {
++        var timer = Stopwatch.StartNew();
++        try
++        {
++            string answer = await _llm.ChatAsync("Отвечай одним словом.", null, "Скажи: работает", false, ct);
++            return "Связь есть (" + (timer.ElapsedMilliseconds / 1000f).ToString("0.0") + " с). Ответ модели: " + Clean(answer);
++        }
++        catch (OperationCanceledException)
++        {
++            throw;
++        }
++        catch (OllamaException ex)
++        {
++            return ex.Message;
++        }
++    }
++}
+diff --git a/Assets/Scripts/Core/IsolatedBrain.cs b/Assets/Scripts/Core/IsolatedBrain.cs
+index 813419d..f64861d 100644
+--- a/Assets/Scripts/Core/IsolatedBrain.cs
++++ b/Assets/Scripts/Core/IsolatedBrain.cs
+@@ -7,6 +7,9 @@ using System.Threading.Tasks;
+ 
+ public class IsolatedBrain : IAgentBrain
+ {
++    /// <summary>Начало стандартного ответа «не понял»: по нему HybridBrain отличает непонятую фразу.</summary>
++    public const string UnknownReplyPrefix = "Пока я умею отвечать на базовые запросы";
++
+     private static readonly Dictionary<string, int> OrdinalNumbers = new Dictionary<string, int>(StringComparer.Ordinal)
+     {
+         { "первый", 1 }, { "первая", 1 }, { "первую", 1 }, { "первой", 1 }, { "первого", 1 }, { "первом", 1 },
+@@ -96,7 +99,7 @@ public class IsolatedBrain : IAgentBrain
+         if (lower.Contains("браузер") || lower.Contains("гитхаб"))
+             return Task.FromResult("COMMAND:OPEN_URL|https://github.com");
+ 
+-        return Task.FromResult("Пока я умею отвечать на базовые запросы и управлять локальным списком задач. Можно сказать: «добавь задачу … на завтра», «покажи мои задачи», «отметь задачу 2 выполненной», «переименуй задачу 1 в …», «удали первую и вторую задачу», «какое сегодня число» или «сколько будет 15 процентов от 2300».");
++        return Task.FromResult(UnknownReplyPrefix + " и управлять локальным списком задач. Можно сказать: «добавь задачу … на завтра», «покажи мои задачи», «отметь задачу 2 выполненной», «переименуй задачу 1 в …», «удали первую и вторую задачу», «какое сегодня число» или «сколько будет 15 процентов от 2300».");
+     }
+ 
+     private static string Normalize(string value)
+diff --git a/Assets/Scripts/Core/LlmSettings.cs b/Assets/Scripts/Core/LlmSettings.cs
+new file mode 100644
+index 0000000..fa17eaa
+--- /dev/null
++++ b/Assets/Scripts/Core/LlmSettings.cs
+@@ -0,0 +1,52 @@
++using UnityEngine;
++
++/// <summary>
++/// Настройки языковой модели (Ollama). Хранятся в PlayerPrefs; меняются в чате командой «/llm».
++/// </summary>
++public static class LlmSettings
++{
++    private const string EnabledKey = "llm.enabled";
++    private const string UrlKey = "llm.url";
++    private const string ModelKey = "llm.model";
++
++    public const string DefaultModel = "llama3.1:8b";
++
++    public static string DefaultUrl
++    {
++        get
++        {
++#if UNITY_ANDROID && !UNITY_EDITOR
++            // Адрес компьютера хозяина эмулятора Android Studio. На телефоне задаётся командой «/llm адрес …».
++            return "http://10.0.2.2:11434";
++#else
++            return "http://127.0.0.1:11434";
++#endif
++        }
++    }
++
++    public static bool Enabled
++    {
++        get { return PlayerPrefs.GetInt(EnabledKey, 1) != 0; }
++        set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); PlayerPrefs.Save(); }
++    }
++
++    public static string Url
++    {
++        get
++        {
++            string value = PlayerPrefs.GetString(UrlKey, string.Empty);
++            return string.IsNullOrWhiteSpace(value) ? DefaultUrl : value.Trim().TrimEnd('/');
++        }
++        set { PlayerPrefs.SetString(UrlKey, (value ?? string.Empty).Trim().TrimEnd('/')); PlayerPrefs.Save(); }
++    }
++
++    public static string Model
++    {
++        get
++        {
++            string value = PlayerPrefs.GetString(ModelKey, string.Empty);
++            return string.IsNullOrWhiteSpace(value) ? DefaultModel : value.Trim();
++        }
++        set { PlayerPrefs.SetString(ModelKey, (value ?? string.Empty).Trim()); PlayerPrefs.Save(); }
++    }
++}
+diff --git a/Assets/Scripts/Core/MiniJson.cs b/Assets/Scripts/Core/MiniJson.cs
+new file mode 100644
+index 0000000..052b67a
+--- /dev/null
++++ b/Assets/Scripts/Core/MiniJson.cs
+@@ -0,0 +1,159 @@
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.Text;
++
++/// <summary>
++/// Минимальный разбор плоского JSON-объекта {"ключ": "значение", ...} из ответа языковой модели.
++/// Берёт первый объект из текста (модель может добавить слова вокруг). Вложенные значения хранятся как есть (строкой).
++/// </summary>
++public static class MiniJson
++{
++    public static Dictionary<string, string> ParseFlatObject(string text)
++    {
++        if (string.IsNullOrEmpty(text)) return null;
++        int start = text.IndexOf('{');
++        if (start < 0) return null;
++
++        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
++        int i = start + 1;
++        while (i < text.Length)
++        {
++            SkipSpaces(text, ref i);
++            if (i >= text.Length) return null;
++            if (text[i] == '}') return result;
++            if (text[i] == ',') { i++; continue; }
++            if (text[i] != '"') return null;
++
++            string key = ReadString(text, ref i);
++            if (key == null) return null;
++            SkipSpaces(text, ref i);
++            if (i >= text.Length || text[i] != ':') return null;
++            i++;
++            SkipSpaces(text, ref i);
++            if (i >= text.Length) return null;
++
++            string value;
++            char c = text[i];
++            if (c == '"')
++            {
++                value = ReadString(text, ref i);
++                if (value == null) return null;
++            }
++            else if (c == '{' || c == '[')
++            {
++                value = ReadRaw(text, ref i);
++                if (value == null) return null;
++            }
++            else
++            {
++                int s = i;
++                while (i < text.Length && text[i] != ',' && text[i] != '}') i++;
++                value = text.Substring(s, i - s).Trim();
++                if (value == "null") value = string.Empty;
++            }
++            result[key] = value;
++        }
++        return null;
++    }
++
++    public static string Get(Dictionary<string, string> map, string key)
++    {
++        string value;
++        if (map != null && map.TryGetValue(key, out value) && value != null) return value.Trim();
++        return string.Empty;
++    }
++
++    /// <summary>Строка в кавычках JSON с экранированием.</summary>
++    public static string Quote(string value)
++    {
++        var sb = new StringBuilder((value == null ? 0 : value.Length) + 2);
++        sb.Append('"');
++        if (value != null)
++        {
++            foreach (char c in value)
++            {
++                switch (c)
++                {
++                    case '"': sb.Append("\\\""); break;
++                    case '\\': sb.Append("\\\\"); break;
++                    case '\n': sb.Append("\\n"); break;
++                    case '\r': sb.Append("\\r"); break;
++                    case '\t': sb.Append("\\t"); break;
++                    default:
++                        if (c < ' ') sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
++                        else sb.Append(c);
++                        break;
++                }
++            }
++        }
++        sb.Append('"');
++        return sb.ToString();
++    }
++
++    private static void SkipSpaces(string text, ref int i)
++    {
++        while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
++    }
++
++    // text[i] == '"'. Возвращает разобранную строку и ставит i после закрывающей кавычки; null, если строка не закрыта.
++    private static string ReadString(string text, ref int i)
++    {
++        var sb = new StringBuilder();
++        i++;
++        while (i < text.Length)
++        {
++            char c = text[i++];
++            if (c == '"') return sb.ToString();
++            if (c != '\\') { sb.Append(c); continue; }
++            if (i >= text.Length) return null;
++
++            char e = text[i++];
++            switch (e)
++            {
++                case 'n': sb.Append('\n'); break;
++                case 't': sb.Append('\t'); break;
++                case 'r': sb.Append('\r'); break;
++                case 'b': sb.Append('\b'); break;
++                case 'f': sb.Append('\f'); break;
++                case 'u':
++                    int code;
++                    if (i + 4 <= text.Length &&
++                        int.TryParse(text.Substring(i, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out code))
++                    {
++                        sb.Append((char)code);
++                        i += 4;
++                    }
++                    break;
++                default: sb.Append(e); break;
++            }
++        }
++        return null;
++    }
++
++    // text[i] == '{' или '['. Возвращает текст вложенного значения целиком и ставит i после него.
++    private static string ReadRaw(string text, ref int i)
++    {
++        int start = i;
++        int depth = 0;
++        bool inString = false;
++        while (i < text.Length)
++        {
++            char c = text[i++];
++            if (inString)
++            {
++                if (c == '\\') i++;
++                else if (c == '"') inString = false;
++                continue;
++            }
++            if (c == '"') inString = true;
++            else if (c == '{' || c == '[') depth++;
++            else if (c == '}' || c == ']')
++            {
++                depth--;
++                if (depth == 0) return text.Substring(start, i - start);
++            }
++        }
++        return null;
++    }
++}
+diff --git a/Assets/Scripts/Core/OllamaClient.cs b/Assets/Scripts/Core/OllamaClient.cs
+new file mode 100644
+index 0000000..f7bab7f
+--- /dev/null
++++ b/Assets/Scripts/Core/OllamaClient.cs
+@@ -0,0 +1,88 @@
++using System;
++using System.Collections.Generic;
++using System.Text;
++using System.Threading;
++using System.Threading.Tasks;
++using UnityEngine;
++using UnityEngine.Networking;
++
++public sealed class OllamaException : Exception
++{
++    public OllamaException(string message) : base(message) { }
++}
++
++/// <summary>
++/// Клиент Ollama (POST /api/chat, без потока). Работает на главном потоке Unity.
++/// Адрес и модель берутся из LlmSettings при каждом вызове, поэтому смена настроек действует сразу.
++/// </summary>
++public sealed class OllamaClient
++{
++    private const int TimeoutSeconds = 60;
++
++    [Serializable] public class ChatReply { public ChatMessage message; }
++    [Serializable] public class ChatMessage { public string role; public string content; }
++
++    /// <param name="history">Предыдущие реплики: пары (роль "user"/"assistant", текст).</param>
++    public async Task<string> ChatAsync(string system, IList<KeyValuePair<string, string>> history,
++        string userText, bool jsonMode, CancellationToken ct)
++    {
++        string baseUrl = LlmSettings.Url;
++        string model = LlmSettings.Model;
++
++        var body = new StringBuilder();
++        body.Append("{\"model\":").Append(MiniJson.Quote(model));
++        body.Append(",\"stream\":false");
++        if (jsonMode) body.Append(",\"format\":\"json\"");
++        body.Append(",\"keep_alive\":\"30m\"");
++        body.Append(",\"options\":{\"temperature\":0.2}");
++        body.Append(",\"messages\":[");
++        body.Append("{\"role\":\"system\",\"content\":").Append(MiniJson.Quote(system)).Append('}');
++        if (history != null)
++        {
++            foreach (KeyValuePair<string, string> turn in history)
++                body.Append(",{\"role\":").Append(MiniJson.Quote(turn.Key))
++                    .Append(",\"content\":").Append(MiniJson.Quote(turn.Value)).Append('}');
++        }
++        body.Append(",{\"role\":\"user\",\"content\":").Append(MiniJson.Quote(userText)).Append('}');
++        body.Append("]}");
++
++        using (var request = new UnityWebRequest(baseUrl + "/api/chat", "POST"))
++        {
++            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body.ToString()));
++            request.downloadHandler = new DownloadHandlerBuffer();
++            request.SetRequestHeader("Content-Type", "application/json");
++            request.timeout = TimeoutSeconds;
++
++            var done = new TaskCompletionSource<bool>();
++            UnityWebRequestAsyncOperation operation = request.SendWebRequest();
++            operation.completed += _ => done.TrySetResult(true);
++
++            using (ct.Register(() =>
++            {
++                try { request.Abort(); } catch (Exception) { }
++                done.TrySetResult(true);
++            }))
++            {
++                await done.Task;
++            }
++            ct.ThrowIfCancellationRequested();
++
++            if (request.result != UnityWebRequest.Result.Success)
++            {
++                if (request.responseCode == 404)
++                    throw new OllamaException("Модель «" + model + "» не найдена в Ollama. Задайте другую: /llm модель имя");
++                if (request.result == UnityWebRequest.Result.ConnectionError)
++                    throw new OllamaException("Не удалось подключиться к Ollama по адресу " + baseUrl + " (" + request.error + ")");
++                throw new OllamaException("Ollama вернула ошибку: " + request.error);
++            }
++
++            ChatReply reply;
++            try { reply = JsonUtility.FromJson<ChatReply>(request.downloadHandler.text); }
++            catch (Exception ex) { throw new OllamaException("Не удалось разобрать ответ Ollama: " + ex.Message); }
++
++            if (reply == null || reply.message == null || string.IsNullOrWhiteSpace(reply.message.content))
++                throw new OllamaException("Ollama вернула пустой ответ.");
++            return reply.message.content;
++        }
++    }
++}
