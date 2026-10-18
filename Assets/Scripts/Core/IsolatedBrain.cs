@@ -60,6 +60,10 @@ public class IsolatedBrain : IAgentBrain
             return Task.FromResult("COMMAND:TASK_RENAME|" + renameNumber + "|" + Uri.EscapeDataString(newTitle));
         }
 
+        // Отказ («не надо ничего открывать», «не открывай»): ничего не выполняем, иначе слова вроде «браузер» сработают снова.
+        if (IsRefusal(lower))
+            return Task.FromResult("Хорошо, ничего не делаю.");
+
         if (IsTaskListRequest(lower))
             return Task.FromResult("COMMAND:TASK_LIST");
 
@@ -96,7 +100,8 @@ public class IsolatedBrain : IAgentBrain
         if (lower.Contains("время") || lower.Contains("час"))
             return Task.FromResult("COMMAND:TIME");
 
-        if (lower.Contains("браузер") || lower.Contains("гитхаб"))
+        if ((lower.Contains("браузер") || lower.Contains("гитхаб") || lower.Contains("github")) &&
+            ContainsAny(lower, "откр", "запус", "зайд", "зайт", "перейд", "включ", "загруз"))
             return Task.FromResult("COMMAND:OPEN_URL|https://github.com");
 
         return Task.FromResult(UnknownReplyPrefix + " и управлять локальным списком задач. Можно сказать: «добавь задачу … на завтра», «покажи мои задачи», «отметь задачу 2 выполненной», «переименуй задачу 1 в …», «удали первую и вторую задачу», «какое сегодня число» или «сколько будет 15 процентов от 2300».");
@@ -139,6 +144,14 @@ public class IsolatedBrain : IAgentBrain
             }
         }
         return null;
+    }
+
+    // Короткая фраза-отказ: «не надо», «не нужно», «не открывай», «ничего не открывай».
+    private static bool IsRefusal(string lower)
+    {
+        if (lower.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length > 8) return false;
+        return ContainsAny(lower, "не надо", "не нужно", "не открывай", "не открывать", "не запускай", "не включай",
+            "не просил", "не хочу открывать", "ничего не открывай", "ничего открывать");
     }
 
     private static bool IsTaskListRequest(string text)

@@ -24,6 +24,28 @@ public static class LlmSettings
         }
     }
 
+    /// <summary>Задан ли адрес Ollama вручную.</summary>
+    public static bool HasCustomUrl
+    {
+        get { return !string.IsNullOrWhiteSpace(PlayerPrefs.GetString(UrlKey, string.Empty)); }
+    }
+
+    /// <summary>
+    /// Есть ли смысл опрашивать Ollama. На телефоне без заданного адреса её нет (компьютер неизвестен),
+    /// поэтому не тратим время на ожидание и сразу идём к другим профилям.
+    /// </summary>
+    public static bool OllamaUsable
+    {
+        get
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return HasCustomUrl;
+#else
+            return true;
+#endif
+        }
+    }
+
     public static bool Enabled
     {
         get { return PlayerPrefs.GetInt(EnabledKey, 1) != 0; }

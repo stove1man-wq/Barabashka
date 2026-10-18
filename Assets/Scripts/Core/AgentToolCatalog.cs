@@ -34,6 +34,8 @@ public static class AgentToolCatalog
         sb.AppendLine("- task_rename: переименовать задачу. {\"tool\":\"task_rename\",\"number\":\"2\",\"title\":\"новое название\"}");
         sb.AppendLine("- open_url: открыть сайт в браузере. {\"tool\":\"open_url\",\"url\":\"https://...\"}");
         sb.AppendLine("Номера задач - это номера из списка, который показывает task_list. Если пользователь не назвал номер, верни reply с уточняющим вопросом.");
+        sb.AppendLine("Каждая реплика пользователя - отдельная просьба: не повторяй инструменты из прошлых реплик, если об этом не просят снова.");
+        sb.AppendLine("Если пользователь отказывается («не надо», «не открывай», «отмена», «ничего не делай»), верни {\"reply\":\"Хорошо.\"} без tool.");
         sb.AppendLine("Не выдумывай факты, погоду и новости. Если не знаешь ответа или не можешь это сделать, честно скажи об этом в reply.");
         sb.AppendLine("Сегодня " + now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ", " + WeekDays[(int)now.DayOfWeek] +
                       ", время " + now.ToString("HH:mm", CultureInfo.InvariantCulture) + ".");

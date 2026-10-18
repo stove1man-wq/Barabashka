@@ -1,0 +1,53 @@
+diff --git a/Assets/Scripts/Core/AgentToolCatalog.cs b/Assets/Scripts/Core/AgentToolCatalog.cs
+index 20a161b..0c7701b 100644
+--- a/Assets/Scripts/Core/AgentToolCatalog.cs
++++ b/Assets/Scripts/Core/AgentToolCatalog.cs
+@@ -34,6 +34,8 @@ public static class AgentToolCatalog
+         sb.AppendLine("- task_rename: переименовать задачу. {\"tool\":\"task_rename\",\"number\":\"2\",\"title\":\"новое название\"}");
+         sb.AppendLine("- open_url: открыть сайт в браузере. {\"tool\":\"open_url\",\"url\":\"https://...\"}");
+         sb.AppendLine("Номера задач - это номера из списка, который показывает task_list. Если пользователь не назвал номер, верни reply с уточняющим вопросом.");
++        sb.AppendLine("Каждая реплика пользователя - отдельная просьба: не повторяй инструменты из прошлых реплик, если об этом не просят снова.");
++        sb.AppendLine("Если пользователь отказывается («не надо», «не открывай», «отмена», «ничего не делай»), верни {\"reply\":\"Хорошо.\"} без tool.");
+         sb.AppendLine("Не выдумывай факты, погоду и новости. Если не знаешь ответа или не можешь это сделать, честно скажи об этом в reply.");
+         sb.AppendLine("Сегодня " + now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ", " + WeekDays[(int)now.DayOfWeek] +
+                       ", время " + now.ToString("HH:mm", CultureInfo.InvariantCulture) + ".");
+diff --git a/Assets/Scripts/Core/IsolatedBrain.cs b/Assets/Scripts/Core/IsolatedBrain.cs
+index f64861d..f6fcebd 100644
+--- a/Assets/Scripts/Core/IsolatedBrain.cs
++++ b/Assets/Scripts/Core/IsolatedBrain.cs
+@@ -60,6 +60,10 @@ public class IsolatedBrain : IAgentBrain
+             return Task.FromResult("COMMAND:TASK_RENAME|" + renameNumber + "|" + Uri.EscapeDataString(newTitle));
+         }
+ 
++        // Отказ («не надо ничего открывать», «не открывай»): ничего не выполняем, иначе слова вроде «браузер» сработают снова.
++        if (IsRefusal(lower))
++            return Task.FromResult("Хорошо, ничего не делаю.");
++
+         if (IsTaskListRequest(lower))
+             return Task.FromResult("COMMAND:TASK_LIST");
+ 
+@@ -96,7 +100,8 @@ public class IsolatedBrain : IAgentBrain
+         if (lower.Contains("время") || lower.Contains("час"))
+             return Task.FromResult("COMMAND:TIME");
+ 
+-        if (lower.Contains("браузер") || lower.Contains("гитхаб"))
++        if ((lower.Contains("браузер") || lower.Contains("гитхаб") || lower.Contains("github")) &&
++            ContainsAny(lower, "откр", "запус", "зайд", "зайт", "перейд", "включ", "загруз"))
+             return Task.FromResult("COMMAND:OPEN_URL|https://github.com");
+ 
+         return Task.FromResult(UnknownReplyPrefix + " и управлять локальным списком задач. Можно сказать: «добавь задачу … на завтра», «покажи мои задачи», «отметь задачу 2 выполненной», «переименуй задачу 1 в …», «удали первую и вторую задачу», «какое сегодня число» или «сколько будет 15 процентов от 2300».");
+@@ -141,6 +146,14 @@ public class IsolatedBrain : IAgentBrain
+         return null;
+     }
+ 
++    // Короткая фраза-отказ: «не надо», «не нужно», «не открывай», «ничего не открывай».
++    private static bool IsRefusal(string lower)
++    {
++        if (lower.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length > 8) return false;
++        return ContainsAny(lower, "не надо", "не нужно", "не открывай", "не открывать", "не запускай", "не включай",
++            "не просил", "не хочу открывать", "ничего не открывай", "ничего открывать");
++    }
++
+     private static bool IsTaskListRequest(string text)
+     {
+         bool mentionsTasks = ContainsAny(text, "задач", "дела", "список дел", "что осталось сделать");

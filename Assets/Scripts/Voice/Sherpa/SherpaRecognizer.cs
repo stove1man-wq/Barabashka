@@ -23,7 +23,9 @@ namespace Barabashka.Voice.SherpaEngine
     {
         // Настройки определения речи/паузы.
         private const float SpeechRms = 0.012f;      // громкость, выше которой считаем, что идёт речь
-        private const float EndSilenceSec = 0.9f;    // пауза, после которой фраза считается законченной
+        private const float EndSilenceSec = 1.0f;    // пауза, после которой короткая фраза («да», «время») считается законченной
+        private const float EndSilenceLongSec = 1.8f; // пауза для длинной фразы: человек может задуматься посреди мысли
+        private const float LongPhraseSec = 1.5f;    // фраза с речью дольше этого считается длинной
         private const float PreRollSec = 0.35f;      // сколько звука до начала речи добавляем к фразе
         private const float MinSpeechSec = 0.10f;    // более короткие всплески игнорируем (короткое «да» ~0.2 с)
         private const float MinClipSec = 1.0f;       // очень короткие фразы дополняем тишиной: так модель распознаёт их надёжнее
@@ -286,7 +288,8 @@ namespace Barabashka.Voice.SherpaEngine
             _segmentRate = sampleRate;
 
             float total = _current.Count / (float)sampleRate;
-            if (_silenceSec >= EndSilenceSec || total >= MaxSegmentSec)
+            float endSilence = _speechSec >= LongPhraseSec ? EndSilenceLongSec : EndSilenceSec;
+            if (_silenceSec >= endSilence || total >= MaxSegmentSec)
                 FinishSegment();
         }
 

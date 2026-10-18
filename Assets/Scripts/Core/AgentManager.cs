@@ -32,7 +32,7 @@ public class AgentManager : MonoBehaviour
 
     private void Awake()
     {
-        _brain = new HybridBrain(new LegacyBrainAdapter(new IsolatedBrain()), new OllamaClient());
+        _brain = new HybridBrain(new LegacyBrainAdapter(new IsolatedBrain()), new LlmClient());
         _router = GetComponent<AgentCommandRouter>();
 
         if (_router == null)
@@ -148,11 +148,11 @@ public class AgentManager : MonoBehaviour
 
         if (_uiManager != null)
         {
-            _uiManager.AddUserMessage(message);
+            _uiManager.AddUserMessage(SafeForDisplay(message));
         }
         AgentActivityBus.Publish(AgentActivity.Thinking);
 
-        Debug.Log("[User Input]: " + message);
+        Debug.Log("[User Input]: " + SafeForDisplay(message));
         try
         {
             // Если агент ждёт подтверждения («Удалить задачу? да/нет»), эта фраза - ответ на вопрос.
@@ -193,6 +193,17 @@ public class AgentManager : MonoBehaviour
         {
             if (requestVersion == _requestVersion) _requestRunning = false;
         }
+    }
+
+    // Ключи API из команд «/llm добавить …» и «/llm ключ …» не показываем в чате и не пишем в журнал.
+    private static string SafeForDisplay(string message)
+    {
+        if (message == null || !message.StartsWith("/llm ", StringComparison.OrdinalIgnoreCase)) return message;
+        string[] parts = message.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3) return message;
+        string action = parts[1].ToLowerInvariant();
+        if (action != "добавить" && action != "ключ") return message;
+        return parts[0] + " " + parts[1] + " " + parts[2] + " ***";
     }
 
     private static string[] Words(string text)
