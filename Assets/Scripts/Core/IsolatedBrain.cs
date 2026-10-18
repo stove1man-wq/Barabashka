@@ -39,6 +39,16 @@ public class IsolatedBrain : IAgentBrain
         // Числа словами -> цифры («задачу два» -> «задачу 2»): распознавание речи часто даёт слова.
         string lowerNum = RuNumbers.Replace(lower);
 
+        // Напоминания и таймеры («напомни через 10 минут…», «поставь таймер на 5 минут») - раньше задач.
+        string reminderCommand;
+        if (AgentReminderParser.TryHandle(lower, DateTime.Now, out reminderCommand))
+            return Task.FromResult("COMMAND:" + reminderCommand);
+
+        // Погода и заметки.
+        string utilityCommand;
+        if (AgentUtilityParser.TryHandle(lower, out utilityCommand))
+            return Task.FromResult("COMMAND:" + utilityCommand);
+
         string title = ExtractTaskTitle(text, lower);
         if (title != null)
         {
@@ -93,9 +103,6 @@ public class IsolatedBrain : IAgentBrain
 
         if (lower.Contains("привет") || lower.Contains("здравствуй"))
             return Task.FromResult("Приветствую! Я ваш независимый ИИ-агент. Рад помочь!");
-
-        if (lower.Contains("погод"))
-            return Task.FromResult("Сегодня отличная погода для разработки локальных систем!");
 
         if (lower.Contains("время") || lower.Contains("час"))
             return Task.FromResult("COMMAND:TIME");
@@ -171,7 +178,7 @@ public class IsolatedBrain : IAgentBrain
     }
 
     // Номера задач из фразы: «первую и вторую» / «задачи 1 и 3» -> "1,2" / "1,3"; «все задачи» -> "ALL".
-    private static string ExtractTaskSpec(string normalizedText)
+    internal static string ExtractTaskSpec(string normalizedText)
     {
         string[] words = normalizedText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 

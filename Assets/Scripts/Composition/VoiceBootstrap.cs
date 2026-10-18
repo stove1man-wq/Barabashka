@@ -96,6 +96,7 @@ namespace Barabashka.Composition
 
                 _speech = new SpeechCoordinator(_recognizer, _tts);
                 AgentCommandRouter.ResponseShown += HandleAgentResponse;
+                AgentCommandRouter.AnnouncementShown += HandleAnnouncement;
 
                 _channel = new VoiceInputChannel(_recognizer);
                 _channel.OnUtterance += HandleUtterance;
@@ -228,6 +229,15 @@ namespace Barabashka.Composition
             else main.Post(() => SpeakNow(speech));
         }
 
+        // Напоминания и таймеры озвучиваются всегда: человек их ждёт, независимо от того, как задавал вопрос.
+        private void HandleAnnouncement(string text)
+        {
+            string speech = SpeechText(text);
+            IMainThread main = MainThreadDispatcher.Instance;
+            if (main == null) SpeakNow(speech);
+            else main.Post(() => SpeakNow(speech));
+        }
+
         private void SpeakNow(string speech)
         {
             if (_speech != null && !string.IsNullOrWhiteSpace(speech)) _speech.Say(speech, "ru");
@@ -255,6 +265,7 @@ namespace Barabashka.Composition
         private void OnDestroy()
         {
             AgentCommandRouter.ResponseShown -= HandleAgentResponse;
+            AgentCommandRouter.AnnouncementShown -= HandleAnnouncement;
             AgentVoiceControl.MutedChanged -= OnMutedChanged;
             AgentVoiceControl.StopSpeakingRequested -= OnStopSpeaking;
             _cts.Cancel();

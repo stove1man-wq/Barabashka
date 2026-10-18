@@ -45,6 +45,12 @@ public static class RuNumbers
         "миллион", "миллиона", "миллионов"
     };
 
+    /// <summary>Значение одного числа-слова («девять» -> 9, «тридцать» -> 30); false, если слово не число.</summary>
+    public static bool TryWord(string token, out int value)
+    {
+        return Small.TryGetValue(token ?? string.Empty, out value);
+    }
+
     /// <summary>Заменяет числа-слова цифрами. Остальной текст не меняется.</summary>
     public static string Replace(string normalized)
     {

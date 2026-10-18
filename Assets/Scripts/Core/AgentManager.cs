@@ -35,6 +35,9 @@ public class AgentManager : MonoBehaviour
         _brain = new HybridBrain(new LegacyBrainAdapter(new IsolatedBrain()), new LlmClient());
         _router = GetComponent<AgentCommandRouter>();
 
+        // Сервис напоминаний и таймеров живёт на том же объекте.
+        if (GetComponent<AgentReminderService>() == null) gameObject.AddComponent<AgentReminderService>();
+
         if (_router == null)
             Debug.LogError("[AgentManager] Компонент AgentCommandRouter не найден!");
     }
@@ -277,6 +280,8 @@ public class AgentManager : MonoBehaviour
     {
         string[] words = Words(text);
         if (words.Length == 0 || words.Length > 3) return false;
+        // «Отмени напоминание / таймер / задачу» - это команда, а не «стоп».
+        if (HasStem(words, "напомин", "таймер", "задач")) return false;
         foreach (string w in words)
         {
             if (w == "стоп" || w == "стой" || w == "хватит" || w == "отмена" || w == "отмени" ||

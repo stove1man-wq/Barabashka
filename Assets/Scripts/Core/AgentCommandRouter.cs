@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using Barabashka.Contracts;
 using UnityEngine;
 
 public class AgentCommandRouter : MonoBehaviour
@@ -67,6 +69,8 @@ public class AgentCommandRouter : MonoBehaviour
             }
             else if (command.StartsWith("TASK_DELETE|", StringComparison.Ordinal))
                 AskToConfirmDelete(command.Substring("TASK_DELETE|".Length));
+            else if (command.StartsWith("TOOL|", StringComparison.Ordinal))
+                RunRegisteredTool(command.Substring("TOOL|".Length));
             else
                 ShowResponse("Команда не поддерживается: " + command);
 
@@ -156,6 +160,47 @@ public class AgentCommandRouter : MonoBehaviour
 
         // Ответ не похож на «да»/«нет»: считаем, что пользователь передумал, и разбираем фразу как обычную.
         return false;
+    }
+
+    // Инструменты нового образца: «TOOL|имя|ключ=значение&ключ=значение».
+    private async void RunRegisteredTool(string spec)
+    {
+        string[] parts = spec.Split(new[] { '|' }, 2);
+        IAgentTool tool;
+        if (!AgentToolRegistry.Default.TryGet(parts[0], out tool))
+        {
+            ShowResponse("Не нашёл такой возможности: " + parts[0]);
+            return;
+        }
+
+        try
+        {
+            var args = AgentToolRegistry.ParseQuery(parts.Length > 1 ? parts[1] : string.Empty);
+            ToolResult result = await tool.ExecuteAsync(args, CancellationToken.None);
+            ShowResponse(result.Success ? result.Output : result.Error);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogException(ex);
+            ShowResponse("Не получилось выполнить действие. Подробности записаны в журнале Unity.");
+        }
+    }
+
+    /// <summary>Сообщение «по инициативе агента» (напоминание, таймер): показывается всегда, озвучивается по желанию.</summary>
+    public static event Action<string> AnnouncementShown;
+
+    public void Announce(string text, bool speak)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        Debug.Log("[Router] Напоминание: " + text);
+
+        if (_uiManager == null) _uiManager = GetComponent<AgentUIManager>();
+        if (_uiManager != null) _uiManager.UpdateResponseText(text);
+        PlayAnimation("Greet");
+
+        if (!speak) return;
+        try { AnnouncementShown?.Invoke(text); }
+        catch (Exception ex) { Debug.LogException(ex); }
     }
 
     /// <summary>Вызывается каждый раз, когда агент показал ответ пользователю (для озвучки и т.п.).</summary>

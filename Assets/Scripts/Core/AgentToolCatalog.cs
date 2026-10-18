@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Barabashka.Contracts;
 
 /// <summary>
 /// Каталог инструментов, которые может вызвать языковая модель. Здесь же два действия:
@@ -33,6 +34,8 @@ public static class AgentToolCatalog
         sb.AppendLine("- task_delete: удалить задачи. {\"tool\":\"task_delete\",\"numbers\":\"1\"}");
         sb.AppendLine("- task_rename: переименовать задачу. {\"tool\":\"task_rename\",\"number\":\"2\",\"title\":\"новое название\"}");
         sb.AppendLine("- open_url: открыть сайт в браузере. {\"tool\":\"open_url\",\"url\":\"https://...\"}");
+        foreach (IAgentTool registered in AgentToolRegistry.Default.Tools)
+            sb.AppendLine("- " + registered.Name + ": " + registered.Description);
         sb.AppendLine("Номера задач - это номера из списка, который показывает task_list. Если пользователь не назвал номер, верни reply с уточняющим вопросом.");
         sb.AppendLine("Каждая реплика пользователя - отдельная просьба: не повторяй инструменты из прошлых реплик, если об этом не просят снова.");
         sb.AppendLine("Если пользователь отказывается («не надо», «не открывай», «отмена», «ничего не делай»), верни {\"reply\":\"Хорошо.\"} без tool.");
@@ -123,8 +126,25 @@ public static class AgentToolCatalog
             }
 
             default:
-                error = "неизвестный инструмент «" + tool + "»";
-                return false;
+            {
+                IAgentTool registered;
+                if (!AgentToolRegistry.Default.TryGet(tool, out registered))
+                {
+                    error = "неизвестный инструмент «" + tool + "»";
+                    return false;
+                }
+
+                // Инструмент из реестра: все поля, кроме служебных, передаются ему как аргументы.
+                var pairs = new List<KeyValuePair<string, string>>();
+                foreach (KeyValuePair<string, string> field in args)
+                {
+                    if (string.Equals(field.Key, "tool", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(field.Key, "reply", StringComparison.OrdinalIgnoreCase)) continue;
+                    pairs.Add(new KeyValuePair<string, string>(field.Key, field.Value));
+                }
+                command = "TOOL|" + registered.Name + "|" + AgentToolRegistry.BuildQuery(pairs);
+                return true;
+            }
         }
     }
 

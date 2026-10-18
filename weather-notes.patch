@@ -1,0 +1,802 @@
+diff --git a/Assets/Scripts/Core/AgentNotes.cs b/Assets/Scripts/Core/AgentNotes.cs
+new file mode 100644
+index 0000000..9ad4eea
+--- /dev/null
++++ b/Assets/Scripts/Core/AgentNotes.cs
+@@ -0,0 +1,125 @@
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.IO;
++using UnityEngine;
++
++/// <summary>Заметки («запомни, что…»): хранение в файле приложения, как у напоминаний.</summary>
++public static class AgentNotes
++{
++    private const string FileName = "barabashka_notes_v1.json";
++    private const int MaxNotes = 500;
++
++    [Serializable]
++    public class Note
++    {
++        public int id;
++        public string text;
++        public string createdUtc;
++    }
++
++    [Serializable]
++    public class Document
++    {
++        public int nextId = 1;
++        public List<Note> items = new List<Note>();
++    }
++
++    private static Document _doc;
++
++    private static string FilePath { get { return Path.Combine(Application.persistentDataPath, FileName); } }
++
++    private static Document Doc
++    {
++        get
++        {
++            if (_doc == null) _doc = Load();
++            return _doc;
++        }
++    }
++
++    private static Document Load()
++    {
++        try
++        {
++            if (File.Exists(FilePath))
++            {
++                Document loaded = JsonUtility.FromJson<Document>(File.ReadAllText(FilePath));
++                if (loaded != null && loaded.items != null) return loaded;
++            }
++        }
++        catch (Exception ex)
++        {
++            Debug.LogWarning("[Notes] Не удалось прочитать заметки: " + ex.Message);
++        }
++        return new Document();
++    }
++
++    private static bool Save()
++    {
++        try
++        {
++            string temp = FilePath + ".tmp";
++            File.WriteAllText(temp, JsonUtility.ToJson(Doc));
++            if (File.Exists(FilePath)) File.Delete(FilePath);
++            File.Move(temp, FilePath);
++            return true;
++        }
++        catch (Exception ex)
++        {
++            Debug.LogError("[Notes] Не удалось сохранить заметки: " + ex);
++            return false;
++        }
++    }
++
++    public static List<Note> All() { return new List<Note>(Doc.items); }
++
++    public static Note Add(string text, out string error)
++    {
++        error = null;
++        if (Doc.items.Count >= MaxNotes)
++        {
++            error = "Заметок слишком много (больше " + MaxNotes + "). Удалите ненужные.";
++            return null;
++        }
++
++        var note = new Note
++        {
++            id = Doc.nextId++,
++            text = text,
++            createdUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)
++        };
++        Doc.items.Add(note);
++        if (!Save())
++        {
++            Doc.items.Remove(note);
++            error = "Не удалось сохранить заметку. Проверьте свободное место.";
++            return null;
++        }
++        return note;
++    }
++
++    /// <param name="spec">Номера через запятую или ALL.</param>
++    /// <returns>Сколько заметок удалено; -1 - неверные номера.</returns>
++    public static int Delete(string spec)
++    {
++        var targets = new List<Note>();
++        if (string.Equals((spec ?? string.Empty).Trim(), "ALL", StringComparison.OrdinalIgnoreCase))
++        {
++            targets.AddRange(Doc.items);
++        }
++        else
++        {
++            foreach (string part in (spec ?? string.Empty).Split(','))
++            {
++                int n;
++                if (!int.TryParse(part.Trim(), out n) || n < 1 || n > Doc.items.Count) return -1;
++                if (!targets.Contains(Doc.items[n - 1])) targets.Add(Doc.items[n - 1]);
++            }
++        }
++
++        foreach (Note note in targets) Doc.items.Remove(note);
++        if (targets.Count > 0) Save();
++        return targets.Count;
++    }
++}
+diff --git a/Assets/Scripts/Core/AgentToolRegistry.cs b/Assets/Scripts/Core/AgentToolRegistry.cs
+index 5bf88aa..080d9ba 100644
+--- a/Assets/Scripts/Core/AgentToolRegistry.cs
++++ b/Assets/Scripts/Core/AgentToolRegistry.cs
+@@ -42,6 +42,11 @@ public sealed class AgentToolRegistry : IToolRegistry
+         registry.Register(new ReminderAddTool());
+         registry.Register(new ReminderListTool());
+         registry.Register(new ReminderDeleteTool());
++        registry.Register(new WeatherTool());
++        registry.Register(new WeatherSetCityTool());
++        registry.Register(new NoteAddTool());
++        registry.Register(new NoteListTool());
++        registry.Register(new NoteDeleteTool());
+         return registry;
+     }
+ 
+diff --git a/Assets/Scripts/Core/AgentUtilityParser.cs b/Assets/Scripts/Core/AgentUtilityParser.cs
+new file mode 100644
+index 0000000..258df85
+--- /dev/null
++++ b/Assets/Scripts/Core/AgentUtilityParser.cs
+@@ -0,0 +1,210 @@
++using System;
++using System.Collections.Generic;
++using System.Text;
++
++/// <summary>
++/// Разбор правилами фраз про погоду и заметки:
++/// «какая погода», «погода в Казани завтра», «мой город Москва»,
++/// «запомни, что пароль в ящике», «покажи заметки», «найди в заметках пароль», «удали заметку 2».
++/// Работает с нормализованным текстом (строчные буквы, слова через пробел). Результат - команда роутера «TOOL|…».
++/// </summary>
++public static class AgentUtilityParser
++{
++    private static readonly HashSet<string> CancelVerbs = new HashSet<string> { "удали", "удалить", "убери", "убрать", "сотри", "очисти", "очистить" };
++    private static readonly HashSet<string> ListWords = new HashSet<string> { "покажи", "показать", "список", "какие", "мои", "что", "выведи", "перечисли", "отобрази", "прочитай" };
++    private static readonly HashSet<string> CityStop = new HashSet<string> { "сегодня", "завтра", "послезавтра", "сейчас", "на", "будет", "какая", "какой", "как", "в", "неделю", "недели", "выходные", "по", "и" };
++
++    public static bool TryHandle(string lower, out string command)
++    {
++        command = null;
++        if (string.IsNullOrWhiteSpace(lower)) return false;
++        string[] w = lower.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
++
++        // «Добавь задачу проверить погоду», «напомни …»: это задачи и напоминания, а не погода и заметки.
++        if (w.Length > 0 && w[0] == "напомни") return false;
++        for (int i = 0; i < w.Length && i < 3; i++)
++            if (w[i] == "задачу" || w[i] == "задача" || w[i] == "задачи") return false;
++
++        // Город по умолчанию: «мой город Москва», «я живу в Казани», «город по умолчанию Сочи».
++        string home = AfterPhrase(w, "мой", "город");
++        if (home == null) home = AfterPhrase(w, "город", "по", "умолчанию");
++        if (home == null) home = AfterPhrase(w, "я", "живу", "в");
++        if (home == null) home = AfterPhrase(w, "запомни", "город");
++        if (home != null)
++        {
++            command = Tool("set_city", new KeyValuePair<string, string>("city", home));
++            return true;
++        }
++
++        bool weather = false;
++        foreach (string word in w)
++        {
++            if (word.StartsWith("погод", StringComparison.Ordinal)) weather = true;
++            if ((word.StartsWith("дожд", StringComparison.Ordinal) || word == "снег") && Has(w, "будет")) weather = true;
++        }
++        if (weather) return BuildWeather(w, out command);
++
++        return TryNotes(w, out command);
++    }
++
++    // ---- погода ----
++
++    private static bool BuildWeather(string[] w, out string command)
++    {
++        string day = "today";
++        if (Has(w, "завтра")) day = "tomorrow";
++        else if (Has(w, "послезавтра")) day = "day_after";
++        else if (Has(w, "неделю") || Has(w, "недели") || Has(w, "выходные") || Has(w, "неделе")) day = "week";
++
++        // Город: слова после «в» / «во» до слов-ограничителей: «погода в нижнем новгороде завтра».
++        var city = new List<string>();
++        for (int i = 0; i < w.Length - 1; i++)
++        {
++            if (w[i] != "в" && w[i] != "во") continue;
++            for (int j = i + 1; j < w.Length && city.Count < 3; j++)
++            {
++                if (CityStop.Contains(w[j])) break;
++                city.Add(w[j]);
++            }
++            break;
++        }
++
++        // «Погода в моём городе», «здесь»: город не назван, берём город по умолчанию.
++        if (city.Count > 0 && (city[0] == "моем" || city[0] == "моём" || city[0] == "нашем" || city[0] == "этом" ||
++                               city[0] == "здесь" || city[0] == "тут"))
++            city.Clear();
++
++        var pairs = new List<KeyValuePair<string, string>>();
++        if (city.Count > 0) pairs.Add(new KeyValuePair<string, string>("city", string.Join(" ", city)));
++        pairs.Add(new KeyValuePair<string, string>("day", day));
++        command = Tool("weather", pairs.ToArray());
++        return true;
++    }
++
++    // ---- заметки ----
++
++    private static bool TryNotes(string[] w, out string command)
++    {
++        command = null;
++        bool noteWord = false;
++        foreach (string word in w) if (word.StartsWith("заметк", StringComparison.Ordinal)) noteWord = true;
++
++        // Удаление: «удали заметку 2», «удали все заметки».
++        if (noteWord && AnyIn(w, CancelVerbs))
++        {
++            string spec = Numbers(w);
++            command = spec == null
++                ? Tool("note_delete")
++                : Tool("note_delete", new KeyValuePair<string, string>("numbers", spec));
++            return true;
++        }
++
++        // Поиск: «найди в заметках пароль», «что я записывал про дачу».
++        int find = IndexOf(w, "найди");
++        if (find >= 0 && noteWord)
++        {
++            string query = JoinAfterNoise(w, find + 1, "в", "заметках", "заметке", "среди", "заметки", "про", "о");
++            command = query.Length > 0
++                ? Tool("note_list", new KeyValuePair<string, string>("query", query))
++                : Tool("note_list");
++            return true;
++        }
++        int recorded = IndexOf(w, "записывал");
++        if (recorded < 0) recorded = IndexOf(w, "записывала");
++        if (recorded < 0) recorded = IndexOf(w, "запоминал");
++        if (recorded >= 0 && Has(w, "я") && Has(w, "про"))
++        {
++            string query = JoinAfterNoise(w, IndexOf(w, "про") + 1);
++            command = query.Length > 0
++                ? Tool("note_list", new KeyValuePair<string, string>("query", query))
++                : Tool("note_list");
++            return true;
++        }
++
++        // Список: «покажи заметки», «мои заметки», «что я записывал».
++        if ((noteWord && AnyIn(w, ListWords)) || (recorded >= 0 && Has(w, "я")))
++        {
++            command = Tool("note_list");
++            return true;
++        }
++
++        // Запись: «запомни, что …», «запиши заметку …», «новая заметка …», «добавь заметку …».
++        int start = -1;
++        if (w.Length >= 2 && w[0] == "запомни") start = 1;
++        else if (w.Length >= 3 && (w[0] == "запиши" || w[0] == "добавь" || w[0] == "создай" || w[0] == "сделай") && w[1].StartsWith("заметк", StringComparison.Ordinal)) start = 2;
++        else if (w.Length >= 3 && w[0] == "новая" && w[1].StartsWith("заметк", StringComparison.Ordinal)) start = 2;
++        else if (w.Length >= 2 && w[0].StartsWith("заметк", StringComparison.Ordinal)) start = 1;
++
++        if (start >= 0)
++        {
++            string text = JoinAfterNoise(w, start, "что", "мне", "пожалуйста");
++            if (text.Length == 0) return false;
++            command = Tool("note_add", new KeyValuePair<string, string>("text", Capitalize(text)));
++            return true;
++        }
++
++        return false;
++    }
++
++    // ---- общее ----
++
++    private static string Tool(string name, params KeyValuePair<string, string>[] pairs)
++    {
++        return "TOOL|" + name + "|" + AgentToolRegistry.BuildQuery(pairs);
++    }
++
++    private static bool Has(string[] w, string word)
++    {
++        return Array.IndexOf(w, word) >= 0;
++    }
++
++    private static int IndexOf(string[] w, string word)
++    {
++        return Array.IndexOf(w, word);
++    }
++
++    private static bool AnyIn(string[] w, HashSet<string> set)
++    {
++        foreach (string word in w) if (set.Contains(word)) return true;
++        return false;
++    }
++
++    // Слова после заданной цепочки слов («мой город …»); null, если цепочки нет или после неё пусто.
++    private static string AfterPhrase(string[] w, params string[] phrase)
++    {
++        for (int i = 0; i + phrase.Length < w.Length; i++)
++        {
++            bool match = true;
++            for (int k = 0; k < phrase.Length; k++)
++                if (w[i + k] != phrase[k]) { match = false; break; }
++            if (!match) continue;
++
++            var rest = new List<string>();
++            for (int j = i + phrase.Length; j < w.Length && rest.Count < 3; j++) rest.Add(w[j]);
++            return rest.Count == 0 ? null : string.Join(" ", rest);
++        }
++        return null;
++    }
++
++    private static string JoinAfterNoise(string[] w, int from, params string[] noise)
++    {
++        var kept = new List<string>();
++        for (int i = Math.Max(0, from); i < w.Length; i++) kept.Add(w[i]);
++        while (kept.Count > 0 && Array.IndexOf(noise, kept[0]) >= 0) kept.RemoveAt(0);
++        return string.Join(" ", kept).Trim();
++    }
++
++    // «2», «1 и 3», «вторую», «все» -> «2» / «1,3» / «ALL»; нет номеров -> null.
++    private static string Numbers(string[] w)
++    {
++        string joined = RuNumbers.Replace(string.Join(" ", w));
++        foreach (string word in joined.Split(' '))
++            if (word == "все" || word == "всё" || word == "всех") return "ALL";
++        return IsolatedBrain.ExtractTaskSpec(joined);
++    }
++
++    private static string Capitalize(string text)
++    {
++        return string.IsNullOrEmpty(text) ? text : char.ToUpperInvariant(text[0]) + text.Substring(1);
++    }
++}
+diff --git a/Assets/Scripts/Core/AgentWeather.cs b/Assets/Scripts/Core/AgentWeather.cs
+new file mode 100644
+index 0000000..51ecde8
+--- /dev/null
++++ b/Assets/Scripts/Core/AgentWeather.cs
+@@ -0,0 +1,211 @@
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.Text;
++using System.Threading;
++using System.Threading.Tasks;
++using UnityEngine;
++
++/// <summary>
++/// Погода через Open-Meteo (бесплатно, без ключа): поиск города и прогноз на неделю.
++/// Город по умолчанию хранится на устройстве. Текст ответа написан так, чтобы его было удобно и читать, и слушать.
++/// </summary>
++public static class AgentWeather
++{
++    private const string CityKey = "weather.city";
++    private const string LatKey = "weather.lat";
++    private const string LonKey = "weather.lon";
++
++    [Serializable] public class GeoReply { public GeoItem[] results; }
++    [Serializable] public class GeoItem { public string name; public double latitude; public double longitude; public string country; }
++    [Serializable] public class ForecastReply { public CurrentBlock current; public DailyBlock daily; }
++    [Serializable] public class CurrentBlock { public float temperature_2m; public float apparent_temperature; public int weather_code; public float wind_speed_10m; }
++    [Serializable]
++    public class DailyBlock
++    {
++        public string[] time;
++        public int[] weather_code;
++        public float[] temperature_2m_max;
++        public float[] temperature_2m_min;
++        public float[] precipitation_probability_max;
++    }
++
++    public sealed class City
++    {
++        public string Name;
++        public double Lat;
++        public double Lon;
++    }
++
++    private static readonly string[] MonthsGenitive =
++    {
++        "января", "февраля", "марта", "апреля", "мая", "июня",
++        "июля", "августа", "сентября", "октября", "ноября", "декабря"
++    };
++
++    public static City DefaultCity()
++    {
++        string name = PlayerPrefs.GetString(CityKey, string.Empty);
++        if (string.IsNullOrEmpty(name)) return null;
++        double lat, lon;
++        if (!double.TryParse(PlayerPrefs.GetString(LatKey, string.Empty), NumberStyles.Float, CultureInfo.InvariantCulture, out lat) ||
++            !double.TryParse(PlayerPrefs.GetString(LonKey, string.Empty), NumberStyles.Float, CultureInfo.InvariantCulture, out lon))
++            return null;
++        return new City { Name = name, Lat = lat, Lon = lon };
++    }
++
++    public static void SaveDefaultCity(City city)
++    {
++        PlayerPrefs.SetString(CityKey, city.Name);
++        PlayerPrefs.SetString(LatKey, city.Lat.ToString("R", CultureInfo.InvariantCulture));
++        PlayerPrefs.SetString(LonKey, city.Lon.ToString("R", CultureInfo.InvariantCulture));
++        PlayerPrefs.Save();
++    }
++
++    /// <summary>
++    /// Ищет город. Из речи приходят падежные формы («в Москве»), поэтому пробуем слово как есть и без последних букв:
++    /// поиск Open-Meteo нечёткий и находит город по началу названия.
++    /// </summary>
++    public static async Task<City> FindCityAsync(string query, CancellationToken ct)
++    {
++        string clean = (query ?? string.Empty).Trim();
++        var attempts = new List<string>();
++        if (clean.Length >= 2) attempts.Add(clean);
++        if (clean.Length >= 5) attempts.Add(clean.Substring(0, clean.Length - 1));
++        if (clean.Length >= 6) attempts.Add(clean.Substring(0, clean.Length - 2));
++
++        foreach (string attempt in attempts)
++        {
++            string url = "https://geocoding-api.open-meteo.com/v1/search?name=" + Uri.EscapeDataString(attempt) +
++                         "&count=1&language=ru&format=json";
++            string json = await SimpleHttp.GetAsync(url, 10, ct);
++            GeoReply reply = JsonUtility.FromJson<GeoReply>(json);
++            if (reply != null && reply.results != null && reply.results.Length > 0 && !string.IsNullOrEmpty(reply.results[0].name))
++            {
++                GeoItem item = reply.results[0];
++                return new City { Name = item.name, Lat = item.latitude, Lon = item.longitude };
++            }
++        }
++        return null;
++    }
++
++    /// <param name="day">today, tomorrow, day_after или week.</param>
++    public static async Task<string> DescribeAsync(City city, string day, CancellationToken ct)
++    {
++        string url = "https://api.open-meteo.com/v1/forecast?latitude=" + city.Lat.ToString("R", CultureInfo.InvariantCulture) +
++                     "&longitude=" + city.Lon.ToString("R", CultureInfo.InvariantCulture) +
++                     "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m" +
++                     "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
++                     "&wind_speed_unit=ms&timezone=auto&forecast_days=7";
++        string json = await SimpleHttp.GetAsync(url, 10, ct);
++        ForecastReply forecast = JsonUtility.FromJson<ForecastReply>(json);
++        if (forecast == null || forecast.daily == null || forecast.daily.time == null || forecast.daily.time.Length == 0)
++            return "Не удалось получить прогноз погоды.";
++
++        DailyBlock d = forecast.daily;
++        string dayKey = (day ?? "today").ToLowerInvariant();
++
++        if (dayKey == "week")
++        {
++            var sb = new StringBuilder("Погода в городе " + city.Name + " на неделю:\n");
++            for (int i = 0; i < d.time.Length; i++) sb.Append(DayLine(d, i)).Append('\n');
++            return sb.ToString().TrimEnd();
++        }
++
++        if (dayKey == "tomorrow") return "Завтра в городе " + city.Name + ": " + DaySummary(d, 1) + ".";
++        if (dayKey == "day_after") return "Послезавтра в городе " + city.Name + ": " + DaySummary(d, 2) + ".";
++
++        CurrentBlock c = forecast.current;
++        string now = c == null ? string.Empty
++            : "Сейчас в городе " + city.Name + " " + Degrees(c.temperature_2m) + ", ощущается как " + Num(c.apparent_temperature) +
++              ", " + Condition(c.weather_code) + ", ветер " + Mps(c.wind_speed_10m) + ". ";
++        return now + "Сегодня " + DaySummary(d, 0) + ".";
++    }
++
++    private static string DaySummary(DailyBlock d, int i)
++    {
++        if (i >= d.time.Length) return "прогноза нет";
++        string text = Range(d.temperature_2m_min, d.temperature_2m_max, i) + ", " + Condition(Code(d, i));
++        if (d.precipitation_probability_max != null && i < d.precipitation_probability_max.Length)
++        {
++            int p = (int)Math.Round(d.precipitation_probability_max[i]);
++            if (p >= 20) text += ", вероятность осадков " + p + " " + Plural(p, "процент", "процента", "процентов");
++        }
++        return text;
++    }
++
++    private static string DayLine(DailyBlock d, int i)
++    {
++        DateTime date;
++        string label = DateTime.TryParseExact(d.time[i], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date)
++            ? date.Day + " " + MonthsGenitive[date.Month - 1] : d.time[i];
++        return label + ": " + Range(d.temperature_2m_min, d.temperature_2m_max, i) + ", " + Condition(Code(d, i));
++    }
++
++    private static int Code(DailyBlock d, int i)
++    {
++        return d.weather_code != null && i < d.weather_code.Length ? d.weather_code[i] : -1;
++    }
++
++    private static string Range(float[] min, float[] max, int i)
++    {
++        if (min == null || max == null || i >= min.Length || i >= max.Length) return "температура неизвестна";
++        int lo = (int)Math.Round(min[i]);
++        int hi = (int)Math.Round(max[i]);
++        return "от " + SignedNumber(lo) + " до " + SignedNumber(hi) + " " + Plural(Math.Abs(hi), "градуса", "градусов", "градусов");
++    }
++
++    private static string Degrees(double t)
++    {
++        int r = (int)Math.Round(t);
++        return SignedNumber(r) + " " + Plural(Math.Abs(r), "градус", "градуса", "градусов");
++    }
++
++    private static string Num(double t)
++    {
++        return SignedNumber((int)Math.Round(t));
++    }
++
++    private static string SignedNumber(int n)
++    {
++        if (n > 0) return "плюс " + n;
++        if (n < 0) return "минус " + Math.Abs(n);
++        return "ноль";
++    }
++
++    private static string Mps(double v)
++    {
++        int n = (int)Math.Round(v);
++        return n + " " + Plural(n, "метр", "метра", "метров") + " в секунду";
++    }
++
++    private static string Plural(int n, string one, string few, string many)
++    {
++        int mod100 = n % 100;
++        int mod10 = n % 10;
++        if (mod100 >= 11 && mod100 <= 14) return many;
++        if (mod10 == 1) return one;
++        if (mod10 >= 2 && mod10 <= 4) return few;
++        return many;
++    }
++
++    // Коды погоды WMO в Open-Meteo.
++    private static string Condition(int code)
++    {
++        switch (code)
++        {
++            case 0: return "ясно";
++            case 1: return "преимущественно ясно";
++            case 2: return "переменная облачность";
++            case 3: return "пасмурно";
++            case 45: case 48: return "туман";
++            case 51: case 53: case 55: case 56: case 57: return "морось";
++            case 61: case 63: case 65: case 66: case 67: return "дождь";
++            case 71: case 73: case 75: case 77: return "снег";
++            case 80: case 81: case 82: return "ливень";
++            case 85: case 86: return "снегопад";
++            case 95: case 96: case 99: return "гроза";
++            default: return "погода без подробностей";
++        }
++    }
++}
+diff --git a/Assets/Scripts/Core/IsolatedBrain.cs b/Assets/Scripts/Core/IsolatedBrain.cs
+index f7b5952..ac08a10 100644
+--- a/Assets/Scripts/Core/IsolatedBrain.cs
++++ b/Assets/Scripts/Core/IsolatedBrain.cs
+@@ -44,6 +44,11 @@ public class IsolatedBrain : IAgentBrain
+         if (AgentReminderParser.TryHandle(lower, DateTime.Now, out reminderCommand))
+             return Task.FromResult("COMMAND:" + reminderCommand);
+ 
++        // Погода и заметки.
++        string utilityCommand;
++        if (AgentUtilityParser.TryHandle(lower, out utilityCommand))
++            return Task.FromResult("COMMAND:" + utilityCommand);
++
+         string title = ExtractTaskTitle(text, lower);
+         if (title != null)
+         {
+@@ -99,9 +104,6 @@ public class IsolatedBrain : IAgentBrain
+         if (lower.Contains("привет") || lower.Contains("здравствуй"))
+             return Task.FromResult("Приветствую! Я ваш независимый ИИ-агент. Рад помочь!");
+ 
+-        if (lower.Contains("погод"))
+-            return Task.FromResult("Сегодня отличная погода для разработки локальных систем!");
+-
+         if (lower.Contains("время") || lower.Contains("час"))
+             return Task.FromResult("COMMAND:TIME");
+ 
+diff --git a/Assets/Scripts/Core/NoteTools.cs b/Assets/Scripts/Core/NoteTools.cs
+new file mode 100644
+index 0000000..ef1d9a8
+--- /dev/null
++++ b/Assets/Scripts/Core/NoteTools.cs
+@@ -0,0 +1,68 @@
++using System;
++using System.Collections.Generic;
++using System.Text;
++using System.Threading;
++using System.Threading.Tasks;
++using Barabashka.Contracts;
++
++public sealed class NoteAddTool : IAgentTool
++{
++    public string Name { get { return "note_add"; } }
++    public string Description { get { return "записать заметку («запомни, что…»). {\"tool\":\"note_add\",\"text\":\"что запомнить\"}"; } }
++
++    public Task<ToolResult> ExecuteAsync(IDictionary<string, string> args, CancellationToken ct)
++    {
++        string text = ToolArgs.Get(args, "text");
++        if (text.Length == 0) return Task.FromResult(ToolResult.Fail("Что записать? Скажите, например: «запомни, что пароль от wifi лежит в ящике»."));
++        if (text.Length > 1000) text = text.Substring(0, 1000);
++
++        string error;
++        AgentNotes.Note note = AgentNotes.Add(text, out error);
++        if (note == null) return Task.FromResult(ToolResult.Fail(error));
++        return Task.FromResult(ToolResult.Ok("Записал: «" + text + "»."));
++    }
++}
++
++public sealed class NoteListTool : IAgentTool
++{
++    public string Name { get { return "note_list"; } }
++    public string Description { get { return "показать заметки или найти среди них. {\"tool\":\"note_list\"} или {\"tool\":\"note_list\",\"query\":\"слово\"}"; } }
++
++    public Task<ToolResult> ExecuteAsync(IDictionary<string, string> args, CancellationToken ct)
++    {
++        List<AgentNotes.Note> notes = AgentNotes.All();
++        if (notes.Count == 0) return Task.FromResult(ToolResult.Ok("Заметок пока нет."));
++
++        string query = ToolArgs.Get(args, "query").ToLowerInvariant();
++        var sb = new StringBuilder();
++        int shown = 0;
++        for (int i = 0; i < notes.Count; i++)
++        {
++            if (query.Length > 0 && notes[i].text.ToLowerInvariant().IndexOf(query, StringComparison.Ordinal) < 0) continue;
++            sb.Append(i + 1).Append(". ").Append(notes[i].text).Append('\n');
++            shown++;
++        }
++
++        if (shown == 0) return Task.FromResult(ToolResult.Ok("В заметках нет ничего про «" + query + "»."));
++        string header = query.Length > 0 ? "Нашёл в заметках:\n" : "Ваши заметки:\n";
++        return Task.FromResult(ToolResult.Ok(header + sb.ToString().TrimEnd()));
++    }
++}
++
++public sealed class NoteDeleteTool : IAgentTool
++{
++    public string Name { get { return "note_delete"; } }
++    public string Description { get { return "удалить заметки по номерам из списка. {\"tool\":\"note_delete\",\"numbers\":\"1,2\"}, все: \"ALL\""; } }
++
++    public Task<ToolResult> ExecuteAsync(IDictionary<string, string> args, CancellationToken ct)
++    {
++        string numbers = ToolArgs.Get(args, "numbers");
++        if (numbers.Length == 0)
++            return Task.FromResult(ToolResult.Fail("Какую заметку удалить? Назовите номер или попросите показать заметки."));
++
++        int removed = AgentNotes.Delete(numbers);
++        if (removed < 0) return Task.FromResult(ToolResult.Fail("Заметки с таким номером нет. Попросите показать заметки."));
++        if (removed == 0) return Task.FromResult(ToolResult.Ok("Заметок нет."));
++        return Task.FromResult(ToolResult.Ok(removed == 1 ? "Заметка удалена." : "Удалено заметок: " + removed + "."));
++    }
++}
+diff --git a/Assets/Scripts/Core/SimpleHttp.cs b/Assets/Scripts/Core/SimpleHttp.cs
+new file mode 100644
+index 0000000..2c9ce34
+--- /dev/null
++++ b/Assets/Scripts/Core/SimpleHttp.cs
+@@ -0,0 +1,41 @@
++using System;
++using System.Threading;
++using System.Threading.Tasks;
++using UnityEngine.Networking;
++
++public sealed class HttpFailure : Exception
++{
++    public HttpFailure(string message) : base(message) { }
++}
++
++/// <summary>Простой GET-запрос с отменой и таймаутом для главного потока Unity.</summary>
++public static class SimpleHttp
++{
++    public static async Task<string> GetAsync(string url, int timeoutSec, CancellationToken ct)
++    {
++        using (var request = UnityWebRequest.Get(url))
++        {
++            request.timeout = timeoutSec;
++
++            var done = new TaskCompletionSource<bool>();
++            UnityWebRequestAsyncOperation operation = request.SendWebRequest();
++            operation.completed += _ => done.TrySetResult(true);
++
++            using (ct.Register(() =>
++            {
++                try { request.Abort(); } catch (Exception) { }
++                done.TrySetResult(true);
++            }))
++            {
++                await done.Task;
++            }
++            ct.ThrowIfCancellationRequested();
++
++            if (request.result == UnityWebRequest.Result.ConnectionError)
++                throw new HttpFailure("нет связи с интернетом");
++            if (request.result != UnityWebRequest.Result.Success)
++                throw new HttpFailure("сервис ответил ошибкой " + request.responseCode);
++            return request.downloadHandler.text;
++        }
++    }
++}
+diff --git a/Assets/Scripts/Core/WeatherTools.cs b/Assets/Scripts/Core/WeatherTools.cs
+new file mode 100644
+index 0000000..0406e2a
+--- /dev/null
++++ b/Assets/Scripts/Core/WeatherTools.cs
+@@ -0,0 +1,69 @@
++using System;
++using System.Collections.Generic;
++using System.Threading;
++using System.Threading.Tasks;
++using Barabashka.Contracts;
++
++public sealed class WeatherTool : IAgentTool
++{
++    public string Name { get { return "weather"; } }
++
++    public string Description
++    {
++        get
++        {
++            return "узнать погоду. {\"tool\":\"weather\",\"city\":\"Москва\",\"day\":\"today|tomorrow|day_after|week\"}; " +
++                   "city в именительном падеже, можно не указывать, если город по умолчанию уже задан.";
++        }
++    }
++
++    public async Task<ToolResult> ExecuteAsync(IDictionary<string, string> args, CancellationToken ct)
++    {
++        try
++        {
++            string cityName = ToolArgs.Get(args, "city");
++            AgentWeather.City city;
++            if (cityName.Length > 0)
++            {
++                city = await AgentWeather.FindCityAsync(cityName, ct);
++                if (city == null) return ToolResult.Fail("Не нашёл город «" + cityName + "». Попробуйте назвать его иначе.");
++            }
++            else
++            {
++                city = AgentWeather.DefaultCity();
++                if (city == null)
++                    return ToolResult.Fail("Скажите город: «погода в Москве». Чтобы не повторять, скажите «мой город Москва».");
++            }
++
++            return ToolResult.Ok(await AgentWeather.DescribeAsync(city, ToolArgs.Get(args, "day"), ct));
++        }
++        catch (HttpFailure ex)
++        {
++            return ToolResult.Fail("Не удалось узнать погоду: " + ex.Message + ".");
++        }
++    }
++}
++
++public sealed class WeatherSetCityTool : IAgentTool
++{
++    public string Name { get { return "set_city"; } }
++    public string Description { get { return "запомнить город по умолчанию для погоды. {\"tool\":\"set_city\",\"city\":\"Москва\"}"; } }
++
++    public async Task<ToolResult> ExecuteAsync(IDictionary<string, string> args, CancellationToken ct)
++    {
++        string cityName = ToolArgs.Get(args, "city");
++        if (cityName.Length == 0) return ToolResult.Fail("Не услышал название города.");
++
++        try
++        {
++            AgentWeather.City city = await AgentWeather.FindCityAsync(cityName, ct);
++            if (city == null) return ToolResult.Fail("Не нашёл город «" + cityName + "». Попробуйте назвать его иначе.");
++            AgentWeather.SaveDefaultCity(city);
++            return ToolResult.Ok("Хорошо, мой город по умолчанию для погоды: " + city.Name + ".");
++        }
++        catch (HttpFailure ex)
++        {
++            return ToolResult.Fail("Не удалось проверить город: " + ex.Message + ".");
++        }
++    }
++}

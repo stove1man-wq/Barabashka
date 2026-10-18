@@ -1,0 +1,20 @@
+{
+    "name": "Barabashka.Notifications.Android",
+    "rootNamespace": "Barabashka.Notifications",
+    "references": [ "Barabashka.Contracts", "Unity.Notifications.Android" ],
+    "includePlatforms": [ "Android" ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [ "BARABASHKA_MOBILE_NOTIFICATIONS" ],
+    "versionDefines": [
+        {
+            "name": "com.unity.mobile.notifications",
+            "expression": "0.0.1",
+            "define": "BARABASHKA_MOBILE_NOTIFICATIONS"
+        }
+    ],
+    "noEngineReferences": false
+}
