@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11+: без этого приложение не видит установленные синтезаторы речи, и TextToSpeech не запускается. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.barabashka.ttsqueries">
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+</manifest>

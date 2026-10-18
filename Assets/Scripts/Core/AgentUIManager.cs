@@ -14,16 +14,64 @@ public class AgentUIManager : MonoBehaviour
     private ScrollRect _scrollRect;
     private readonly List<string> _messageHistory = new List<string>();
 
+    // Режимы интерфейса: «голосовой» (аватар на пол-экрана) и «полный» (аватар сверху, чат и ввод).
+    private struct ModeRect
+    {
+        public RectTransform Rect;
+        public Vector2 MinVoice, MaxVoice, MinFull, MaxFull;
+    }
+    private readonly List<ModeRect> _modeRects = new List<ModeRect>();
+    private bool _fullMode;
+    private float _modeT;
+    private CanvasGroup _chatGroup, _inputGroup, _voiceGroup;
+    private Text _subtitleText;
+    private GameObject _modeIconMenu, _modeIconClose;
+    private Button _micSmall;
+    private string _subtitleUser = string.Empty;
+    private string _subtitleAgent = string.Empty;
+
     private Font _font;
     private const float ReferenceWidth = 1080f;
     private const float ReferenceHeight = 1920f;
+
+    private void OnEnable()
+    {
+        Barabashka.Contracts.AgentActivityBus.Changed += OnActivityChanged;
+        Barabashka.Contracts.AgentVoiceControl.MutedChanged += OnMutedChanged;
+    }
+
+    private void OnDisable()
+    {
+        Barabashka.Contracts.AgentActivityBus.Changed -= OnActivityChanged;
+        Barabashka.Contracts.AgentVoiceControl.MutedChanged -= OnMutedChanged;
+    }
+
+    // Состояние агента показываем только в строке статуса: в чат оно не попадает.
+    private void OnActivityChanged(Barabashka.Contracts.AgentActivity activity)
+    {
+        switch (activity)
+        {
+            case Barabashka.Contracts.AgentActivity.Listening: SetStatus("Слушаю…"); break;
+            case Barabashka.Contracts.AgentActivity.Thinking: SetStatus("Думаю…"); break;
+            case Barabashka.Contracts.AgentActivity.Speaking: SetStatus("Говорю…"); break;
+            case Barabashka.Contracts.AgentActivity.Error:
+                SetStatus("Голос недоступен, текстовый ввод работает");
+                SetMode(true); // без голоса аватарный режим бесполезен: сразу открываем текстовый интерфейс
+                break;
+            default:
+                SetStatus(Barabashka.Contracts.AgentVoiceControl.Muted ? "Микрофон выключен" : "Готов к работе");
+                break;
+        }
+    }
 
     private void Start()
     {
         _agentManager = GetComponent<AgentManager>();
         _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         BuildInterface();
-        AddMessage("Barabashka", "Привет! Я готов помочь. Напиши задачу в поле ниже.", false);
+        ApplyLayout();
+        UpdateMicVisuals();
+        AddMessage("Barabashka", "Привет! Я готов помочь. Говорите или откройте интерфейс, чтобы написать.", false);
         SetStatus("Готов к работе");
     }
 
@@ -51,52 +99,57 @@ public class AgentUIManager : MonoBehaviour
 
         Text title = CreateText("AppTitle", canvasObject.transform, "BARABASHKA", 34,
             new Color(0.78f, 0.88f, 1f), TextAnchor.MiddleLeft);
-        Place(title.rectTransform, new Vector2(0.06f, 0.93f), new Vector2(0.72f, 0.985f),
+        Place(title.rectTransform, new Vector2(0.06f, 0.93f), new Vector2(0.66f, 0.985f),
             Vector2.zero, Vector2.zero);
 
         Text subtitle = CreateText("AppSubtitle", canvasObject.transform, "PERSONAL AI AGENT", 15,
             new Color(0.38f, 0.57f, 0.76f), TextAnchor.MiddleLeft);
-        Place(subtitle.rectTransform, new Vector2(0.06f, 0.905f), new Vector2(0.72f, 0.935f),
+        Place(subtitle.rectTransform, new Vector2(0.06f, 0.905f), new Vector2(0.66f, 0.935f),
             Vector2.zero, Vector2.zero);
 
-        Image avatarHalo = CreateImage("AvatarHalo", canvasObject.transform,
-            new Color(0.12f, 0.55f, 0.95f, 0.10f));
-        SetBuiltInRoundSprite(avatarHalo);
-        avatarHalo.rectTransform.anchorMin = new Vector2(0.5f, 0.82f);
-        avatarHalo.rectTransform.anchorMax = new Vector2(0.5f, 0.82f);
-        avatarHalo.rectTransform.sizeDelta = new Vector2(300f, 300f);
-        avatarHalo.rectTransform.anchoredPosition = Vector2.zero;
+        // Аватар: 3D-персонаж снимается отдельной камерой в RenderTexture, здесь он показывается как картинка.
+        GameObject avatarFrame = new GameObject("AvatarFrame");
+        avatarFrame.transform.SetParent(canvasObject.transform, false);
+        RectTransform avatarFrameRect = avatarFrame.AddComponent<RectTransform>();
+        GameObject avatarImageObject = new GameObject("AvatarImage");
+        avatarImageObject.transform.SetParent(avatarFrame.transform, false);
+        RawImage avatarImage = avatarImageObject.AddComponent<RawImage>();
+        avatarImage.raycastTarget = true;
+        AvatarVisualizer avatar = GetComponent<AvatarVisualizer>();
+        if (avatar != null && avatar.AvatarTexture != null) avatarImage.texture = avatar.AvatarTexture;
+        else avatarImage.color = new Color(0f, 0f, 0f, 0f);
+        Stretch(avatarImage.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        AspectRatioFitter avatarFit = avatarImageObject.AddComponent<AspectRatioFitter>();
+        avatarFit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        avatarFit.aspectRatio = 1f;
+        // Касание аватара: прерывает озвучку или текущий запрос, иначе аватар приветственно машет рукой.
+        Button avatarButton = avatarImageObject.AddComponent<Button>();
+        avatarButton.transition = Selectable.Transition.None;
+        avatarButton.targetGraphic = avatarImage;
+        avatarButton.onClick.AddListener(OnAvatarTapped);
+        Track(avatarFrameRect,
+            new Vector2(0.04f, 0.41f), new Vector2(0.96f, 0.92f),
+            new Vector2(0.67f, 0.84f), new Vector2(0.985f, 0.995f));
 
-        Image avatarRing = CreateImage("AvatarRing", canvasObject.transform,
-            new Color(0.15f, 0.65f, 1f, 0.32f));
-        SetBuiltInRoundSprite(avatarRing);
-        avatarRing.rectTransform.anchorMin = new Vector2(0.5f, 0.82f);
-        avatarRing.rectTransform.anchorMax = new Vector2(0.5f, 0.82f);
-        avatarRing.rectTransform.sizeDelta = new Vector2(212f, 212f);
-        avatarRing.rectTransform.anchoredPosition = Vector2.zero;
-
-        Image avatarCore = CreateImage("AvatarCore", canvasObject.transform,
-            new Color(0.08f, 0.24f, 0.40f, 0.98f));
-        SetBuiltInRoundSprite(avatarCore);
-        avatarCore.rectTransform.anchorMin = new Vector2(0.5f, 0.82f);
-        avatarCore.rectTransform.anchorMax = new Vector2(0.5f, 0.82f);
-        avatarCore.rectTransform.sizeDelta = new Vector2(170f, 170f);
-        avatarCore.rectTransform.anchoredPosition = Vector2.zero;
-
-        _statusText = CreateText("AgentStatus", canvasObject.transform, "Готов к работе", 15,
+        _statusText = CreateText("AgentStatus", canvasObject.transform, "Готов к работе", 22,
             new Color(0.42f, 0.75f, 0.95f), TextAnchor.MiddleCenter);
-        Place(_statusText.rectTransform, new Vector2(0.12f, 0.715f), new Vector2(0.86f, 0.745f),
-            Vector2.zero, Vector2.zero);
+        Track(_statusText.rectTransform,
+            new Vector2(0.06f, 0.355f), new Vector2(0.94f, 0.405f),
+            new Vector2(0.06f, 0.865f), new Vector2(0.66f, 0.905f));
 
-        Text chatLabel = CreateText("ConversationLabel", canvasObject.transform, "ДИАЛОГ", 17,
+        _chatGroup = CreateGroup("ChatGroup", canvasObject.transform);
+        _inputGroup = CreateGroup("InputGroup", canvasObject.transform);
+        _voiceGroup = CreateGroup("VoiceGroup", canvasObject.transform);
+
+        Text chatLabel = CreateText("ConversationLabel", _chatGroup.transform, "ДИАЛОГ", 17,
             new Color(0.43f, 0.66f, 0.84f), TextAnchor.MiddleLeft);
-        Place(chatLabel.rectTransform, new Vector2(0.06f, 0.675f), new Vector2(0.83f, 0.705f),
+        Place(chatLabel.rectTransform, new Vector2(0.06f, 0.785f), new Vector2(0.5f, 0.815f),
             Vector2.zero, Vector2.zero);
 
-        Image chatPanel = CreateImage("ConversationPanel", canvasObject.transform,
+        Image chatPanel = CreateImage("ConversationPanel", _chatGroup.transform,
             new Color(0.055f, 0.075f, 0.115f, 0.96f));
         SetRoundedSprite(chatPanel);
-        Place(chatPanel.rectTransform, new Vector2(0.045f, 0.19f), new Vector2(0.92f, 0.67f),
+        Place(chatPanel.rectTransform, new Vector2(0.045f, 0.19f), new Vector2(0.955f, 0.78f),
             Vector2.zero, Vector2.zero);
 
         GameObject scrollObject = new GameObject("ConversationScroll");
@@ -137,10 +190,10 @@ public class AgentUIManager : MonoBehaviour
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         _scrollRect.content = _messageContent;
 
-        Image inputPanel = CreateImage("InputPanel", canvasObject.transform,
+        Image inputPanel = CreateImage("InputPanel", _inputGroup.transform,
             new Color(0.075f, 0.105f, 0.155f, 1f));
         SetRoundedSprite(inputPanel);
-        Place(inputPanel.rectTransform, new Vector2(0.045f, 0.045f), new Vector2(0.92f, 0.16f),
+        Place(inputPanel.rectTransform, new Vector2(0.045f, 0.045f), new Vector2(0.955f, 0.16f),
             Vector2.zero, Vector2.zero);
 
         GameObject inputObject = new GameObject("MessageInput");
@@ -150,7 +203,10 @@ public class AgentUIManager : MonoBehaviour
         SetRoundedSprite(inputBackground);
         _inputField = inputObject.AddComponent<InputField>();
         _inputField.targetGraphic = inputBackground;
-        _inputField.lineType = InputField.LineType.MultiLineNewline;
+        // На телефоне однострочное поле: на экранной клавиатуре появляется кнопка «Готово/Отправить».
+        _inputField.lineType = Application.isMobilePlatform
+            ? InputField.LineType.SingleLine
+            : InputField.LineType.MultiLineNewline;
         _inputField.characterLimit = 4000;
         RectTransform inputRect = inputObject.GetComponent<RectTransform>();
         Stretch(inputRect, new Vector2(0.035f, 0.12f), new Vector2(0.67f, 0.88f),
@@ -167,6 +223,8 @@ public class AgentUIManager : MonoBehaviour
         _inputField.textComponent = inputText;
         _inputField.placeholder = placeholder;
         _inputField.onEndEdit.AddListener(OnInputEndEdit);
+        // Диагностика ввода с экранной клавиатуры (видно в Logcat по метке [Input]).
+        _inputField.onValueChanged.AddListener(value => Debug.Log("[Input] длина текста: " + (value == null ? 0 : value.Length)));
 
         Button attachmentButton = CreateButton("AttachmentButton", inputPanel.transform, "＋",
             new Color(0.12f, 0.18f, 0.27f, 1f), 30);
@@ -184,7 +242,8 @@ public class AgentUIManager : MonoBehaviour
         microphoneRect.anchorMax = new Vector2(0.86f, 0.78f);
         microphoneRect.offsetMin = Vector2.zero;
         microphoneRect.offsetMax = Vector2.zero;
-        microphoneButton.onClick.AddListener(() => SetStatus("Голосовой ввод будет добавлен отдельным этапом"));
+        _micSmall = microphoneButton;
+        microphoneButton.onClick.AddListener(ToggleMute);
 
         Button sendButton = CreateButton("SendButton", inputPanel.transform, "↑",
             new Color(0.12f, 0.48f, 0.82f, 1f), 34);
@@ -195,24 +254,45 @@ public class AgentUIManager : MonoBehaviour
         sendRect.offsetMax = Vector2.zero;
         sendButton.onClick.AddListener(SubmitText);
 
-        Button stopButton = CreateButton("StopStrip", canvasObject.transform, "",
-            new Color(0.42f, 0.12f, 0.17f, 0.94f), 20);
-        RectTransform stopRect = stopButton.GetComponent<RectTransform>();
-        stopRect.anchorMin = new Vector2(0.92f, 0.045f);
-        stopRect.anchorMax = new Vector2(0.985f, 0.16f);
-        stopRect.offsetMin = Vector2.zero;
-        stopRect.offsetMax = Vector2.zero;
-        Text stopLabel = CreateText("StopLabel", stopButton.transform, "STOP", 18,
-            Color.white, TextAnchor.MiddleCenter);
-        stopLabel.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-        stopLabel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-        stopLabel.rectTransform.sizeDelta = new Vector2(76f, 22f);
-        stopLabel.rectTransform.anchoredPosition = Vector2.zero;
-        stopLabel.rectTransform.localEulerAngles = new Vector3(0f, 0f, 90f);
-        stopButton.onClick.AddListener(() =>
-        {
-            if (_agentManager != null) _agentManager.StopCurrentTask();
-        });
+        // Голосовой режим: субтитры, кнопка микрофона и переключатель режима.
+        _subtitleText = CreateText("Subtitles", _voiceGroup.transform, string.Empty, 28,
+            new Color(0.89f, 0.93f, 0.98f), TextAnchor.UpperCenter);
+        _subtitleText.supportRichText = true;
+        _subtitleText.resizeTextForBestFit = true;
+        _subtitleText.resizeTextMinSize = 16;
+        _subtitleText.resizeTextMaxSize = 30;
+        _subtitleText.verticalOverflow = VerticalWrapMode.Truncate;
+        Place(_subtitleText.rectTransform, new Vector2(0.07f, 0.13f), new Vector2(0.93f, 0.345f),
+            Vector2.zero, Vector2.zero);
+
+        // Переключатель режима: маленькая круглая кнопка со значком сбоку, без подписи.
+        Button modeButton = CreateButton("ModeButton", canvasObject.transform, string.Empty,
+            Color.white, 20);
+        Image modeRing = modeButton.targetGraphic as Image;
+        SetBuiltInRoundSprite(modeRing);
+        modeRing.color = new Color(0.40f, 0.72f, 1f, 1f); // светлая обводка
+        ColorBlock modeColors = modeButton.colors;
+        modeColors.normalColor = Color.white;
+        modeColors.highlightedColor = Color.white;
+        modeColors.pressedColor = new Color(0.7f, 0.7f, 0.7f, 1f);
+        modeButton.colors = modeColors;
+        Image modeFill = CreateImage("Fill", modeButton.transform, new Color(0.10f, 0.20f, 0.34f, 1f));
+        SetBuiltInRoundSprite(modeFill);
+        modeFill.raycastTarget = false;
+        Stretch(modeFill.rectTransform, Vector2.zero, Vector2.one, new Vector2(4f, 4f), new Vector2(-4f, -4f));
+        _modeIconMenu = new GameObject("IconMenu");
+        _modeIconMenu.transform.SetParent(modeButton.transform, false);
+        AddIconBar(_modeIconMenu.transform, 0.5f, 0.66f, 0.46f, 0.07f, 0f);
+        AddIconBar(_modeIconMenu.transform, 0.5f, 0.50f, 0.46f, 0.07f, 0f);
+        AddIconBar(_modeIconMenu.transform, 0.5f, 0.34f, 0.46f, 0.07f, 0f);
+        _modeIconClose = new GameObject("IconCollapse");
+        _modeIconClose.transform.SetParent(modeButton.transform, false);
+        AddIconBar(_modeIconClose.transform, 0.39f, 0.50f, 0.34f, 0.08f, -42f);
+        AddIconBar(_modeIconClose.transform, 0.61f, 0.50f, 0.34f, 0.08f, 42f);
+        Track(modeButton.GetComponent<RectTransform>(),
+            new Vector2(0.82f, 0.055f), new Vector2(0.94f, 0.055f + 0.12f * ReferenceWidth / ReferenceHeight),
+            new Vector2(0.86f, 0.793f), new Vector2(0.86f + 0.09f, 0.793f + 0.09f * ReferenceWidth / ReferenceHeight));
+        modeButton.onClick.AddListener(() => SetMode(!_fullMode));
 
         Text footer = CreateText("Footer", canvasObject.transform, "Локальный интерфейс агента", 13,
             new Color(0.30f, 0.40f, 0.53f), TextAnchor.MiddleLeft);
@@ -235,6 +315,17 @@ public class AgentUIManager : MonoBehaviour
         if (_messageContent == null) return;
         string safeMessage = string.IsNullOrWhiteSpace(message) ? "…" : message.Trim();
         _messageHistory.Add(speaker + ": " + safeMessage);
+
+        if (isUser)
+        {
+            _subtitleUser = safeMessage;
+            _subtitleAgent = string.Empty;
+        }
+        else
+        {
+            _subtitleAgent = safeMessage;
+        }
+        RefreshSubtitles();
 
         GameObject card = new GameObject(isUser ? "UserMessage" : "AgentMessage");
         card.transform.SetParent(_messageContent, false);
@@ -279,14 +370,33 @@ public class AgentUIManager : MonoBehaviour
             SetStatus("Сообщение скопировано");
         });
 
+        Debug.Log("[Chat] " + speaker + ": " + safeMessage.Length + " симв., строк: " + (safeMessage.Split('\n').Length));
+        RebuildChatLayout();
+        // На телефоне ширина области чата может быть известна не сразу: повторяем пересчёт на следующем кадре.
+        StartCoroutine(RebuildChatNextFrame());
+    }
+
+    private void RebuildChatLayout()
+    {
+        if (_messageContent == null || _scrollRect == null) return;
         Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate(_messageContent);
         _scrollRect.verticalNormalizedPosition = 0f;
     }
 
+    private System.Collections.IEnumerator RebuildChatNextFrame()
+    {
+        yield return null;
+        RebuildChatLayout();
+    }
+
     private void OnInputEndEdit(string value)
     {
-        if (Keyboard.current != null && Keyboard.current.enterKey.wasPressedThisFrame)
+        bool enterPressed = Keyboard.current != null && Keyboard.current.enterKey.wasPressedThisFrame;
+
+        // На телефоне «Готово» на экранной клавиатуре завершает ввод. Кнопка «назад» отменяет ввод
+        // и возвращает пустой текст, поэтому пустое сообщение не отправится.
+        if (enterPressed || Application.isMobilePlatform)
             SubmitText();
     }
 
@@ -296,7 +406,170 @@ public class AgentUIManager : MonoBehaviour
         string message = _inputField.text.Trim();
         _inputField.SetTextWithoutNotify(string.Empty);
         if (_agentManager != null) _agentManager.SendUserMessage(message);
-        _inputField.ActivateInputField();
+
+        // На телефоне клавиатуру заново не открываем: она закрыта пользователем.
+        if (!Application.isMobilePlatform) _inputField.ActivateInputField();
+    }
+
+    // ---- Режимы интерфейса ----
+
+    private void Track(RectTransform rect, Vector2 minVoice, Vector2 maxVoice, Vector2 minFull, Vector2 maxFull)
+    {
+        ModeRect entry = new ModeRect();
+        entry.Rect = rect;
+        entry.MinVoice = minVoice;
+        entry.MaxVoice = maxVoice;
+        entry.MinFull = minFull;
+        entry.MaxFull = maxFull;
+        _modeRects.Add(entry);
+        rect.anchorMin = minVoice;
+        rect.anchorMax = maxVoice;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
+    // Полоска значка (центр и размер заданы долями кнопки, угол - поворот).
+    private void AddIconBar(Transform parent, float cx, float cy, float width, float height, float angle)
+    {
+        Image bar = CreateImage("Bar", parent, new Color(0.92f, 0.96f, 1f, 1f));
+        bar.raycastTarget = false;
+        Place(bar.rectTransform, new Vector2(cx - width * 0.5f, cy - height * 0.5f),
+            new Vector2(cx + width * 0.5f, cy + height * 0.5f), Vector2.zero, Vector2.zero);
+        bar.rectTransform.localEulerAngles = new Vector3(0f, 0f, angle);
+    }
+
+    private CanvasGroup CreateGroup(string name, Transform parent)
+    {
+        GameObject obj = new GameObject(name);
+        obj.transform.SetParent(parent, false);
+        RectTransform rect = obj.AddComponent<RectTransform>();
+        Stretch(rect, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        return obj.AddComponent<CanvasGroup>();
+    }
+
+    public void SetMode(bool fullInterface)
+    {
+        if (_fullMode == fullInterface) return;
+        _fullMode = fullInterface;
+        if (!fullInterface && _inputField != null) _inputField.DeactivateInputField();
+        Debug.Log("[UI] Режим интерфейса: " + (fullInterface ? "полный" : "голосовой (аватар)"));
+    }
+
+    private void Update()
+    {
+        // Кнопка «Назад» на Android приходит как Escape.
+        if (_fullMode && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            SetMode(false);
+
+        float target = _fullMode ? 1f : 0f;
+        if (!Mathf.Approximately(_modeT, target))
+        {
+            _modeT = Mathf.MoveTowards(_modeT, target, Time.unscaledDeltaTime / 0.35f);
+            ApplyLayout();
+        }
+    }
+
+    private void ApplyLayout()
+    {
+        float s = Mathf.SmoothStep(0f, 1f, _modeT);
+        for (int i = 0; i < _modeRects.Count; i++)
+        {
+            ModeRect entry = _modeRects[i];
+            if (entry.Rect == null) continue;
+            entry.Rect.anchorMin = Vector2.Lerp(entry.MinVoice, entry.MinFull, s);
+            entry.Rect.anchorMax = Vector2.Lerp(entry.MaxVoice, entry.MaxFull, s);
+            entry.Rect.offsetMin = Vector2.zero;
+            entry.Rect.offsetMax = Vector2.zero;
+        }
+
+        SetGroup(_chatGroup, Mathf.Clamp01((s - 0.5f) * 2f));
+        SetGroup(_inputGroup, Mathf.Clamp01((s - 0.5f) * 2f));
+        SetGroup(_voiceGroup, Mathf.Clamp01(1f - s * 2f));
+
+        bool full = s > 0.5f;
+        if (_statusText != null)
+        {
+            _statusText.alignment = full ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter;
+            _statusText.fontSize = full ? 17 : 22;
+        }
+        if (_modeIconMenu != null) _modeIconMenu.SetActive(!full);
+        if (_modeIconClose != null) _modeIconClose.SetActive(full);
+    }
+
+    private static void SetGroup(CanvasGroup group, float alpha)
+    {
+        if (group == null) return;
+        group.alpha = alpha;
+        bool active = alpha > 0.95f;
+        group.interactable = active;
+        group.blocksRaycasts = active;
+    }
+
+    private void OnAvatarTapped()
+    {
+        Barabashka.Contracts.AgentActivity activity = Barabashka.Contracts.AgentActivityBus.Current;
+        if (activity == Barabashka.Contracts.AgentActivity.Speaking)
+        {
+            Barabashka.Contracts.AgentVoiceControl.RequestStopSpeaking();
+            return;
+        }
+        if (activity == Barabashka.Contracts.AgentActivity.Thinking)
+        {
+            if (_agentManager != null) _agentManager.StopCurrentTask();
+            return;
+        }
+        AvatarVisualizer avatar = GetComponent<AvatarVisualizer>();
+        if (avatar != null) avatar.TriggerGreet();
+    }
+
+    private void ToggleMute()
+    {
+        Barabashka.Contracts.AgentVoiceControl.SetMuted(!Barabashka.Contracts.AgentVoiceControl.Muted);
+    }
+
+    private void OnMutedChanged(bool muted)
+    {
+        UpdateMicVisuals();
+    }
+
+    private void UpdateMicVisuals()
+    {
+        bool muted = Barabashka.Contracts.AgentVoiceControl.Muted;
+        Color off = new Color(0.45f, 0.15f, 0.20f, 1f);
+        SetMicButton(_micSmall, muted ? "OFF" : "MIC", muted ? off : new Color(0.12f, 0.18f, 0.27f, 1f));
+    }
+
+    private static void SetMicButton(Button button, string label, Color color)
+    {
+        if (button == null) return;
+        Image image = button.targetGraphic as Image;
+        if (image != null) image.color = color;
+        ColorBlock colors = button.colors;
+        colors.normalColor = color;
+        colors.highlightedColor = Color.Lerp(color, Color.white, 0.12f);
+        colors.pressedColor = Color.Lerp(color, Color.black, 0.18f);
+        button.colors = colors;
+        Text text = button.GetComponentInChildren<Text>();
+        if (text != null) text.text = label;
+    }
+
+    private static string ShortText(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        string clean = text.Replace("<", "\u2039").Trim();
+        return clean.Length <= maxLength ? clean : clean.Substring(0, maxLength).TrimEnd() + "…";
+    }
+
+    // Субтитры голосового режима: что сказали вы (приглушённо) и что ответил агент.
+    private void RefreshSubtitles()
+    {
+        if (_subtitleText == null) return;
+        string user = ShortText(_subtitleUser, 140);
+        string agent = ShortText(_subtitleAgent, 360);
+        string result = string.Empty;
+        if (user.Length > 0) result = "<color=#6F93B5>" + user + "</color>";
+        if (agent.Length > 0) result += (result.Length > 0 ? "\n\n" : string.Empty) + agent;
+        _subtitleText.text = result;
     }
 
     private static Sprite _runtimeCircleSprite;

@@ -1,0 +1,5 @@
+C:/Users/max/Documents/Projects/Barabashka/.utmp/RelWithDebInfo/2b5w5l4g/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/max/Documents/Projects/Barabashka/.utmp/RelWithDebInfo/2b5w5l4g/arm64-v8a/CMakeFiles/rebuild_cache.dir
+C:/Users/max/Documents/Projects/Barabashka/.utmp/RelWithDebInfo/2b5w5l4g/arm64-v8a/GameActivity/CMakeFiles/game.dir
+C:/Users/max/Documents/Projects/Barabashka/.utmp/RelWithDebInfo/2b5w5l4g/arm64-v8a/GameActivity/CMakeFiles/edit_cache.dir
+C:/Users/max/Documents/Projects/Barabashka/.utmp/RelWithDebInfo/2b5w5l4g/arm64-v8a/GameActivity/CMakeFiles/rebuild_cache.dir

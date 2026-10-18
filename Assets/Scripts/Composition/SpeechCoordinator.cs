@@ -34,6 +34,7 @@ namespace Barabashka.Composition
             CancellationToken token = _cts.Token;
 
             _recognizer.StopListening();
+            AgentActivityBus.Publish(AgentActivity.Speaking);
             try
             {
                 await _tts.SpeakAsync(text, languageCode, token);
@@ -49,7 +50,11 @@ namespace Barabashka.Composition
             }
 
             // Если за это время началась другая фраза, микрофон включит она.
-            if (!token.IsCancellationRequested) _recognizer.StartListening();
+            if (!token.IsCancellationRequested)
+            {
+                if (AgentVoiceControl.ListeningAllowed) _recognizer.StartListening();
+                AgentActivityBus.PublishResting();
+            }
         }
 
         public void Cancel()

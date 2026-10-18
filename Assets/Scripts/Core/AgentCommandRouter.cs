@@ -89,6 +89,12 @@ public class AgentCommandRouter : MonoBehaviour
     private string _pendingDeleteIndex;
     private float _pendingUntil;
 
+    /// <summary>Агент ждёт ответа «да»/«нет» на вопрос об удалении (и ожидание ещё не истекло).</summary>
+    public bool HasPendingConfirmation
+    {
+        get { return _pendingDeleteIndex != null && Time.unscaledTime <= _pendingUntil; }
+    }
+
     private void AskToConfirmDelete(string index)
     {
         string what = AgentToolset.DescribeTasks(index);
@@ -157,6 +163,7 @@ public class AgentCommandRouter : MonoBehaviour
 
     private void ShowResponse(string text)
     {
+        Debug.Log("[Router] Ответ агента: " + (text == null ? 0 : text.Length) + " симв.");
         if (!string.IsNullOrWhiteSpace(text))
         {
             try { ResponseShown?.Invoke(text); }

@@ -1,0 +1,48 @@
+diff --git a/Assets/Scripts/Core/AgentManager.cs b/Assets/Scripts/Core/AgentManager.cs
+index 833941c..0e0ae4c 100644
+--- a/Assets/Scripts/Core/AgentManager.cs
++++ b/Assets/Scripts/Core/AgentManager.cs
+@@ -15,7 +15,17 @@ public class AgentManager : MonoBehaviour
+ 
+     private IBrain _brain;
+     private AgentCommandRouter _router;
+-    private AgentUIManager _uiManager;
++    private AgentUIManager _uiManagerCache;
++
++    // Интерфейс может быть добавлен на объект уже после Awake (его создаёт AppBootstrap), поэтому ищем его при первом обращении.
++    private AgentUIManager _uiManager
++    {
++        get
++        {
++            if (_uiManagerCache == null) _uiManagerCache = GetComponent<AgentUIManager>();
++            return _uiManagerCache;
++        }
++    }
+     private CancellationTokenSource _cts;
+     private int _requestVersion;
+     private bool _requestRunning;
+@@ -24,7 +34,6 @@ public class AgentManager : MonoBehaviour
+     {
+         _brain = new LegacyBrainAdapter(new IsolatedBrain());
+         _router = GetComponent<AgentCommandRouter>();
+-        _uiManager = GetComponent<AgentUIManager>();
+ 
+         if (_router == null)
+             Debug.LogError("[AgentManager] Компонент AgentCommandRouter не найден!");
+diff --git a/Assets/Scripts/Core/AppBootstrap.cs b/Assets/Scripts/Core/AppBootstrap.cs
+index 858a64b..e388f4e 100644
+--- a/Assets/Scripts/Core/AppBootstrap.cs
++++ b/Assets/Scripts/Core/AppBootstrap.cs
+@@ -8,6 +8,12 @@ public static class AppBootstrap
+         // Программный поиск или создание корневого объекта агента на сцене
+         GameObject agentObj = GameObject.Find("[AI_AGENT]");
+         if (agentObj == null)
++        {
++            // В сцене уже может лежать объект AI_AGENT (с AgentManager и AgentCommandRouter): используем его,
++            // иначе появятся два агента, и голос будет работать с тем, у которого нет интерфейса.
++            agentObj = GameObject.Find("AI_AGENT");
++        }
++        if (agentObj == null)
+         {
+             agentObj = new GameObject("[AI_AGENT]");
+         }

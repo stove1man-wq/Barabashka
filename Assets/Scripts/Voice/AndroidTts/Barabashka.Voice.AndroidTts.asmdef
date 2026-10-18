@@ -1,0 +1,14 @@
+{
+    "name": "Barabashka.Voice.AndroidTts",
+    "rootNamespace": "Barabashka.Voice.AndroidTts",
+    "references": [ "Barabashka.Contracts" ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

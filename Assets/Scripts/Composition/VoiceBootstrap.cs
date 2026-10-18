@@ -7,6 +7,10 @@ using Barabashka.Voice.SherpaEngine;
 #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
 using Barabashka.Voice.WindowsTts;
 #endif
+#if UNITY_ANDROID && !UNITY_EDITOR
+using Barabashka.Voice.AndroidTts;
+using UnityEngine.Android;
+#endif
 using UnityEngine;
 
 namespace Barabashka.Composition
@@ -58,10 +62,32 @@ namespace Barabashka.Composition
                     return;
                 }
 
+                // На телефоне агент пишет в чат, что происходит: первая загрузка модели может занять несколько минут.
+                bool inChat = Application.platform == RuntimePlatform.Android;
+                _agent.ShowSystemNotice("Подготовка голосового ввода…", false);
+
+                bool micAllowed = await EnsureMicrophoneAsync(_cts.Token);
+                if (!micAllowed)
+                {
+                    _agent.ShowSystemNotice(
+                        "Нет доступа к микрофону: голосовой ввод выключен. Разрешите микрофон в настройках приложения. Текстовый ввод работает.",
+                        true);
+                    AgentActivityBus.Publish(AgentActivity.Error);
+                    return;
+                }
+
                 _tts = CreateTts();
 
                 _recognizer = CreateRecognizer();
-                _recognizer.OnError += message => Debug.LogError("[Voice] " + message);
+                _recognizer.OnError += message =>
+                {
+                    Debug.LogError("[Voice] " + message);
+                    PostToMainThread(() => { if (_agent != null) _agent.ShowSystemNotice("Голосовой ввод: " + message, true); });
+                };
+
+                _agent.ShowSystemNotice(
+                    "Загружаю голосовую модель. При первом запуске она скачивается (около 225 МБ), нужен интернет. Текстовый ввод уже работает.",
+                    inChat);
 
                 Debug.Log("[Voice] Загружаю модель распознавания (" + _recognizer.Id + ")...");
                 await _recognizer.InitializeAsync(
@@ -73,10 +99,11 @@ namespace Barabashka.Composition
 
                 _channel = new VoiceInputChannel(_recognizer);
                 _channel.OnUtterance += HandleUtterance;
-                _channel.Start();
                 Debug.Log("[Voice] Распознавание (" + _recognizer.Id + ") готово, слушаю микрофон.");
 
-                // Временная проверка озвучки; уберём, когда ответы агента начнут озвучиваться сами.
+                AgentVoiceControl.MutedChanged += OnMutedChanged;
+                AgentVoiceControl.StopSpeakingRequested += OnStopSpeaking;
+                ApplyListening();
                 _speech.Say("Голосовой ввод готов.", "ru");
             }
             catch (OperationCanceledException)
@@ -86,7 +113,76 @@ namespace Barabashka.Composition
             catch (Exception e)
             {
                 Debug.LogException(e);
+                if (_agent != null)
+                {
+                    _agent.ShowSystemNotice("Голосовой ввод недоступен: " + e.Message + " Текстовый ввод работает.", true);
+                    AgentActivityBus.VoiceActive = false;
+                    AgentActivityBus.Publish(AgentActivity.Error);
+                }
             }
+        }
+
+        // Микрофон работает, только пока приложение активно и не выключено пользователем.
+        private void ApplyListening()
+        {
+            if (_channel == null) return;
+
+            if (AgentVoiceControl.ListeningAllowed)
+            {
+                _channel.Start();
+                AgentActivityBus.VoiceActive = true;
+            }
+            else
+            {
+                _channel.Stop();
+                AgentActivityBus.VoiceActive = false;
+            }
+            AgentActivityBus.PublishResting();
+        }
+
+        private void OnMutedChanged(bool muted)
+        {
+            ApplyListening();
+        }
+
+        private void OnStopSpeaking()
+        {
+            if (_speech != null) _speech.Cancel();
+            ApplyListening(); // микрофон возвращается после прерванной озвучки
+        }
+
+        private void OnApplicationPause(bool paused)
+        {
+            AgentVoiceControl.AppPaused = paused;
+            ApplyListening();
+        }
+
+        // Android: микрофон нужно запросить у пользователя. На других платформах разрешение не требуется.
+        private static async Task<bool> EnsureMicrophoneAsync(CancellationToken ct)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (Permission.HasUserAuthorizedPermission(Permission.Microphone)) return true;
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var callbacks = new PermissionCallbacks();
+            callbacks.PermissionGranted += _ => tcs.TrySetResult(true);
+            callbacks.PermissionDenied += _ => tcs.TrySetResult(false);
+            callbacks.PermissionDeniedAndDontAskAgain += _ => tcs.TrySetResult(false);
+            Permission.RequestUserPermissions(new[] { Permission.Microphone }, callbacks);
+
+            Task finished = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMinutes(2), ct));
+            return finished == tcs.Task && tcs.Task.Result;
+#else
+            await Task.CompletedTask;
+            return true;
+#endif
+        }
+
+        private static void PostToMainThread(Action action)
+        {
+            IMainThread main = MainThreadDispatcher.Instance;
+            if (main == null) action();
+            else main.Post(action);
         }
 
         private static ISpeechRecognizer CreateRecognizer()
@@ -100,8 +196,10 @@ namespace Barabashka.Composition
             var windows = new WindowsSystemTts();
             windows.WarmUp();
             return windows;
+#elif UNITY_ANDROID && !UNITY_EDITOR
+            return new AndroidSystemTts();
 #else
-            return new NullTextToSpeech(); // Android: встроенный синтезатор будет отдельной реализацией
+            return new NullTextToSpeech();
 #endif
         }
 
@@ -121,6 +219,8 @@ namespace Barabashka.Composition
         private void HandleAgentResponse(string text)
         {
             if (AgentManager.LastInputSource != InputSource.Voice) return;
+            // «Покажи / выведи» - ответ только на экране, без озвучки.
+            if (AgentManager.LastRequestShowOnly) return;
 
             string speech = SpeechText(text);
             IMainThread main = MainThreadDispatcher.Instance;
@@ -155,6 +255,8 @@ namespace Barabashka.Composition
         private void OnDestroy()
         {
             AgentCommandRouter.ResponseShown -= HandleAgentResponse;
+            AgentVoiceControl.MutedChanged -= OnMutedChanged;
+            AgentVoiceControl.StopSpeakingRequested -= OnStopSpeaking;
             _cts.Cancel();
             if (_channel != null)
             {

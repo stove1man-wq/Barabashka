@@ -61,7 +61,7 @@ namespace Barabashka.Voice.SherpaEngine
         /// <param name="asrModelId">Идентификатор офлайн-модели (папка в StreamingAssets/sherpa-onnx/models/speech-recognition).</param>
         /// <param name="vadModelId">Не используется (оставлен для совместимости вызова).</param>
         public SherpaRecognizer(string asrModelId, string vadModelId = "silero-vad",
-            float loadTimeoutSec = 180f, bool verboseLog = true)
+            float loadTimeoutSec = 900f, bool verboseLog = true)
         {
             _asrModelId = asrModelId;
             _loadTimeout = TimeSpan.FromSeconds(loadTimeoutSec);
@@ -90,6 +90,11 @@ namespace Barabashka.Voice.SherpaEngine
 
             try
             {
+                // На Android модель в APK не входит: пакет скачивает её при первом запуске в память приложения.
+                // Скачивание включаем явно и даём на него до 15 минут (модель около 225 МБ).
+                SherpaONNXUnityAPI.SetAutoDownloadModels(true);
+                SherpaONNXUnityAPI.SetDownloadAttemptTimeoutSeconds(900);
+
                 // Как в примере: список моделей получаем заранее.
                 try
                 {
@@ -137,7 +142,8 @@ namespace Barabashka.Voice.SherpaEngine
                             ct.ThrowIfCancellationRequested();
                             throw new TimeoutException("Модель не загрузилась за " +
                                 _loadTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
-                                " с (TryLoadModule=" + started + ", ModelId=" + _asr.ModelId + ").");
+                                " с (TryLoadModule=" + started + ", ModelId=" + _asr.ModelId + "). " +
+                                "Если приложение запущено первый раз, нужен интернет для скачивания модели.");
                         }
                     }
                 }

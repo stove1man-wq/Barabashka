@@ -1,0 +1,345 @@
+diff --git a/Assets/Scripts/Composition/VoiceBootstrap.cs b/Assets/Scripts/Composition/VoiceBootstrap.cs
+index 5173f66..1c6935a 100644
+--- a/Assets/Scripts/Composition/VoiceBootstrap.cs
++++ b/Assets/Scripts/Composition/VoiceBootstrap.cs
+@@ -102,6 +102,7 @@ namespace Barabashka.Composition
+                 Debug.Log("[Voice] Распознавание (" + _recognizer.Id + ") готово, слушаю микрофон.");
+ 
+                 AgentVoiceControl.MutedChanged += OnMutedChanged;
++                AgentVoiceControl.StopSpeakingRequested += OnStopSpeaking;
+                 ApplyListening();
+                 _speech.Say("Голосовой ввод готов.", "ru");
+             }
+@@ -144,6 +145,12 @@ namespace Barabashka.Composition
+             ApplyListening();
+         }
+ 
++        private void OnStopSpeaking()
++        {
++            if (_speech != null) _speech.Cancel();
++            ApplyListening(); // микрофон возвращается после прерванной озвучки
++        }
++
+         private void OnApplicationPause(bool paused)
+         {
+             AgentVoiceControl.AppPaused = paused;
+@@ -212,6 +219,8 @@ namespace Barabashka.Composition
+         private void HandleAgentResponse(string text)
+         {
+             if (AgentManager.LastInputSource != InputSource.Voice) return;
++            // «Покажи / выведи» - ответ только на экране, без озвучки.
++            if (AgentManager.LastRequestShowOnly) return;
+ 
+             string speech = SpeechText(text);
+             IMainThread main = MainThreadDispatcher.Instance;
+@@ -247,6 +256,7 @@ namespace Barabashka.Composition
+         {
+             AgentCommandRouter.ResponseShown -= HandleAgentResponse;
+             AgentVoiceControl.MutedChanged -= OnMutedChanged;
++            AgentVoiceControl.StopSpeakingRequested -= OnStopSpeaking;
+             _cts.Cancel();
+             if (_channel != null)
+             {
+diff --git a/Assets/Scripts/Contracts/Activity.cs b/Assets/Scripts/Contracts/Activity.cs
+index cae596a..abcea18 100644
+--- a/Assets/Scripts/Contracts/Activity.cs
++++ b/Assets/Scripts/Contracts/Activity.cs
+@@ -54,6 +54,15 @@ namespace Barabashka.Contracts
+ 
+         public static event Action<bool> MutedChanged;
+ 
++        /// <summary>Просьба прервать озвучку (касание аватара, команда «стоп»).</summary>
++        public static event Action StopSpeakingRequested;
++
++        public static void RequestStopSpeaking()
++        {
++            Action handler = StopSpeakingRequested;
++            if (handler != null) handler();
++        }
++
+         public static void SetMuted(bool muted)
+         {
+             if (Muted == muted) return;
+diff --git a/Assets/Scripts/Core/AgentCommandRouter.cs b/Assets/Scripts/Core/AgentCommandRouter.cs
+index f887905..0a84a45 100644
+--- a/Assets/Scripts/Core/AgentCommandRouter.cs
++++ b/Assets/Scripts/Core/AgentCommandRouter.cs
+@@ -89,6 +89,12 @@ public class AgentCommandRouter : MonoBehaviour
+     private string _pendingDeleteIndex;
+     private float _pendingUntil;
+ 
++    /// <summary>Агент ждёт ответа «да»/«нет» на вопрос об удалении (и ожидание ещё не истекло).</summary>
++    public bool HasPendingConfirmation
++    {
++        get { return _pendingDeleteIndex != null && Time.unscaledTime <= _pendingUntil; }
++    }
++
+     private void AskToConfirmDelete(string index)
+     {
+         string what = AgentToolset.DescribeTasks(index);
+diff --git a/Assets/Scripts/Core/AgentManager.cs b/Assets/Scripts/Core/AgentManager.cs
+index d3658c1..ea04ec5 100644
+--- a/Assets/Scripts/Core/AgentManager.cs
++++ b/Assets/Scripts/Core/AgentManager.cs
+@@ -10,6 +10,9 @@ public class AgentManager : MonoBehaviour
+     /// <summary>Источник последнего запроса: голосовые запросы озвучиваются, текстовые - нет.</summary>
+     public static InputSource LastInputSource { get; private set; }
+ 
++    /// <summary>Пользователь попросил именно показать (покажи, выведи, отобрази): ответ не озвучивается.</summary>
++    public static bool LastRequestShowOnly { get; private set; }
++
+     private IBrain _brain;
+     private AgentCommandRouter _router;
+     private AgentUIManager _uiManager;
+@@ -90,6 +93,21 @@ public class AgentManager : MonoBehaviour
+         if (string.IsNullOrWhiteSpace(message)) return;
+ 
+         LastInputSource = utterance.Source;
++        LastRequestShowOnly = WantsDisplay(message);
++
++        // Голосом «покажи…» в режиме аватара: сразу открываем интерфейс, иначе ответ не будет виден.
++        if (LastRequestShowOnly && utterance.Source == InputSource.Voice && _uiManager != null)
++            _uiManager.SetMode(true);
++
++        // «Стоп», «хватит», «отмена»: останавливаем озвучку и текущий запрос (если ждём подтверждения, «отмена» - ответ на вопрос).
++        if (_router != null && !_router.HasPendingConfirmation && IsStopPhrase(message))
++        {
++            if (_uiManager != null) _uiManager.AddUserMessage(message);
++            AgentVoiceControl.RequestStopSpeaking();
++            if (_requestRunning) StopCurrentTask();
++            else AgentActivityBus.PublishResting();
++            return;
++        }
+ 
+         int requestVersion = ++_requestVersion;
+         _requestRunning = true;
+@@ -147,6 +165,32 @@ public class AgentManager : MonoBehaviour
+         }
+     }
+ 
++    private static string[] Words(string text)
++    {
++        return (text ?? string.Empty).ToLowerInvariant()
++            .Split(new[] { ' ', ',', '.', '!', '?', ';', ':' }, StringSplitOptions.RemoveEmptyEntries);
++    }
++
++    private static bool WantsDisplay(string text)
++    {
++        string lower = (text ?? string.Empty).ToLowerInvariant();
++        return lower.Contains("покаж") || lower.Contains("выведи") || lower.Contains("выводи") ||
++               lower.Contains("вывест") || lower.Contains("отобраз") || lower.Contains("на экран");
++    }
++
++    private static bool IsStopPhrase(string text)
++    {
++        string[] words = Words(text);
++        if (words.Length == 0 || words.Length > 3) return false;
++        foreach (string w in words)
++        {
++            if (w == "стоп" || w == "стой" || w == "хватит" || w == "отмена" || w == "отмени" ||
++                w == "прекрати" || w == "замолчи" || w == "остановись" || w == "остановить" || w == "молчи")
++                return true;
++        }
++        return false;
++    }
++
+     public void StopCurrentTask()
+     {
+         if (!_requestRunning)
+@@ -163,7 +207,7 @@ public class AgentManager : MonoBehaviour
+         AgentActivityBus.PublishResting();
+         if (_uiManager != null)
+         {
+-            _uiManager.AddAgentMessage("Запрос остановлен в интерфейсе. Если обработчик не поддерживает отмену, вычисление может завершиться в фоне.");
++            _uiManager.AddAgentMessage("Остановлено.");
+             _uiManager.SetStatus("Остановлено");
+         }
+         Debug.Log("[AgentManager] Current response invalidated by Stop.");
+diff --git a/Assets/Scripts/Core/AgentUIManager.cs b/Assets/Scripts/Core/AgentUIManager.cs
+index 3ea13e5..0f42226 100644
+--- a/Assets/Scripts/Core/AgentUIManager.cs
++++ b/Assets/Scripts/Core/AgentUIManager.cs
+@@ -24,8 +24,9 @@ public class AgentUIManager : MonoBehaviour
+     private bool _fullMode;
+     private float _modeT;
+     private CanvasGroup _chatGroup, _inputGroup, _voiceGroup;
+-    private Text _subtitleText, _modeButtonLabel;
+-    private Button _micBig, _micSmall;
++    private Text _subtitleText;
++    private GameObject _modeIconMenu, _modeIconClose;
++    private Button _micSmall;
+     private string _subtitleUser = string.Empty;
+     private string _subtitleAgent = string.Empty;
+ 
+@@ -113,7 +114,7 @@ public class AgentUIManager : MonoBehaviour
+         GameObject avatarImageObject = new GameObject("AvatarImage");
+         avatarImageObject.transform.SetParent(avatarFrame.transform, false);
+         RawImage avatarImage = avatarImageObject.AddComponent<RawImage>();
+-        avatarImage.raycastTarget = false;
++        avatarImage.raycastTarget = true;
+         AvatarVisualizer avatar = GetComponent<AvatarVisualizer>();
+         if (avatar != null && avatar.AvatarTexture != null) avatarImage.texture = avatar.AvatarTexture;
+         else avatarImage.color = new Color(0f, 0f, 0f, 0f);
+@@ -121,6 +122,11 @@ public class AgentUIManager : MonoBehaviour
+         AspectRatioFitter avatarFit = avatarImageObject.AddComponent<AspectRatioFitter>();
+         avatarFit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+         avatarFit.aspectRatio = 1f;
++        // Касание аватара: прерывает озвучку или текущий запрос, иначе аватар приветственно машет рукой.
++        Button avatarButton = avatarImageObject.AddComponent<Button>();
++        avatarButton.transition = Selectable.Transition.None;
++        avatarButton.targetGraphic = avatarImage;
++        avatarButton.onClick.AddListener(OnAvatarTapped);
+         Track(avatarFrameRect,
+             new Vector2(0.04f, 0.41f), new Vector2(0.96f, 0.92f),
+             new Vector2(0.67f, 0.84f), new Vector2(0.985f, 0.995f));
+@@ -137,13 +143,13 @@ public class AgentUIManager : MonoBehaviour
+ 
+         Text chatLabel = CreateText("ConversationLabel", _chatGroup.transform, "ДИАЛОГ", 17,
+             new Color(0.43f, 0.66f, 0.84f), TextAnchor.MiddleLeft);
+-        Place(chatLabel.rectTransform, new Vector2(0.06f, 0.805f), new Vector2(0.5f, 0.835f),
++        Place(chatLabel.rectTransform, new Vector2(0.06f, 0.785f), new Vector2(0.5f, 0.815f),
+             Vector2.zero, Vector2.zero);
+ 
+         Image chatPanel = CreateImage("ConversationPanel", _chatGroup.transform,
+             new Color(0.055f, 0.075f, 0.115f, 0.96f));
+         SetRoundedSprite(chatPanel);
+-        Place(chatPanel.rectTransform, new Vector2(0.045f, 0.19f), new Vector2(0.92f, 0.80f),
++        Place(chatPanel.rectTransform, new Vector2(0.045f, 0.19f), new Vector2(0.955f, 0.78f),
+             Vector2.zero, Vector2.zero);
+ 
+         GameObject scrollObject = new GameObject("ConversationScroll");
+@@ -187,7 +193,7 @@ public class AgentUIManager : MonoBehaviour
+         Image inputPanel = CreateImage("InputPanel", _inputGroup.transform,
+             new Color(0.075f, 0.105f, 0.155f, 1f));
+         SetRoundedSprite(inputPanel);
+-        Place(inputPanel.rectTransform, new Vector2(0.045f, 0.045f), new Vector2(0.92f, 0.16f),
++        Place(inputPanel.rectTransform, new Vector2(0.045f, 0.045f), new Vector2(0.955f, 0.16f),
+             Vector2.zero, Vector2.zero);
+ 
+         GameObject inputObject = new GameObject("MessageInput");
+@@ -248,25 +254,6 @@ public class AgentUIManager : MonoBehaviour
+         sendRect.offsetMax = Vector2.zero;
+         sendButton.onClick.AddListener(SubmitText);
+ 
+-        Button stopButton = CreateButton("StopStrip", _inputGroup.transform, "",
+-            new Color(0.42f, 0.12f, 0.17f, 0.94f), 20);
+-        RectTransform stopRect = stopButton.GetComponent<RectTransform>();
+-        stopRect.anchorMin = new Vector2(0.92f, 0.045f);
+-        stopRect.anchorMax = new Vector2(0.985f, 0.16f);
+-        stopRect.offsetMin = Vector2.zero;
+-        stopRect.offsetMax = Vector2.zero;
+-        Text stopLabel = CreateText("StopLabel", stopButton.transform, "STOP", 18,
+-            Color.white, TextAnchor.MiddleCenter);
+-        stopLabel.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+-        stopLabel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+-        stopLabel.rectTransform.sizeDelta = new Vector2(76f, 22f);
+-        stopLabel.rectTransform.anchoredPosition = Vector2.zero;
+-        stopLabel.rectTransform.localEulerAngles = new Vector3(0f, 0f, 90f);
+-        stopButton.onClick.AddListener(() =>
+-        {
+-            if (_agentManager != null) _agentManager.StopCurrentTask();
+-        });
+-
+         // Голосовой режим: субтитры, кнопка микрофона и переключатель режима.
+         _subtitleText = CreateText("Subtitles", _voiceGroup.transform, string.Empty, 28,
+             new Color(0.89f, 0.93f, 0.98f), TextAnchor.UpperCenter);
+@@ -275,21 +262,25 @@ public class AgentUIManager : MonoBehaviour
+         _subtitleText.resizeTextMinSize = 16;
+         _subtitleText.resizeTextMaxSize = 30;
+         _subtitleText.verticalOverflow = VerticalWrapMode.Truncate;
+-        Place(_subtitleText.rectTransform, new Vector2(0.07f, 0.20f), new Vector2(0.93f, 0.345f),
++        Place(_subtitleText.rectTransform, new Vector2(0.07f, 0.13f), new Vector2(0.93f, 0.345f),
+             Vector2.zero, Vector2.zero);
+ 
+-        _micBig = CreateButton("MicrophoneBig", _voiceGroup.transform, "Микрофон включён",
+-            new Color(0.12f, 0.50f, 0.36f, 1f), 24);
+-        Place(_micBig.GetComponent<RectTransform>(), new Vector2(0.28f, 0.105f), new Vector2(0.72f, 0.19f),
+-            Vector2.zero, Vector2.zero);
+-        _micBig.onClick.AddListener(ToggleMute);
+-
+-        Button modeButton = CreateButton("ModeButton", canvasObject.transform, "Открыть интерфейс",
+-            new Color(0.12f, 0.18f, 0.27f, 1f), 20);
+-        _modeButtonLabel = modeButton.GetComponentInChildren<Text>();
++        // Переключатель режима: маленькая круглая кнопка со значком сбоку, без подписи.
++        Button modeButton = CreateButton("ModeButton", canvasObject.transform, string.Empty,
++            new Color(0.12f, 0.18f, 0.27f, 0.92f), 20);
++        SetBuiltInRoundSprite(modeButton.targetGraphic as Image);
++        _modeIconMenu = new GameObject("IconMenu");
++        _modeIconMenu.transform.SetParent(modeButton.transform, false);
++        AddIconBar(_modeIconMenu.transform, 0.5f, 0.66f, 0.46f, 0.07f, 0f);
++        AddIconBar(_modeIconMenu.transform, 0.5f, 0.50f, 0.46f, 0.07f, 0f);
++        AddIconBar(_modeIconMenu.transform, 0.5f, 0.34f, 0.46f, 0.07f, 0f);
++        _modeIconClose = new GameObject("IconCollapse");
++        _modeIconClose.transform.SetParent(modeButton.transform, false);
++        AddIconBar(_modeIconClose.transform, 0.39f, 0.50f, 0.34f, 0.08f, -42f);
++        AddIconBar(_modeIconClose.transform, 0.61f, 0.50f, 0.34f, 0.08f, 42f);
+         Track(modeButton.GetComponent<RectTransform>(),
+-            new Vector2(0.28f, 0.052f), new Vector2(0.72f, 0.096f),
+-            new Vector2(0.66f, 0.800f), new Vector2(0.93f, 0.838f));
++            new Vector2(0.82f, 0.055f), new Vector2(0.94f, 0.055f + 0.12f * ReferenceWidth / ReferenceHeight),
++            new Vector2(0.86f, 0.793f), new Vector2(0.86f + 0.09f, 0.793f + 0.09f * ReferenceWidth / ReferenceHeight));
+         modeButton.onClick.AddListener(() => SetMode(!_fullMode));
+ 
+         Text footer = CreateText("Footer", canvasObject.transform, "Локальный интерфейс агента", 13,
+@@ -426,6 +417,17 @@ public class AgentUIManager : MonoBehaviour
+         rect.offsetMax = Vector2.zero;
+     }
+ 
++    // Полоска значка (центр и размер заданы долями кнопки, угол - поворот).
++    private void AddIconBar(Transform parent, float cx, float cy, float width, float height, float angle)
++    {
++        Image bar = CreateImage("Bar", parent, new Color(0.85f, 0.92f, 1f, 1f));
++        SetRoundedSprite(bar);
++        bar.raycastTarget = false;
++        Place(bar.rectTransform, new Vector2(cx - width * 0.5f, cy - height * 0.5f),
++            new Vector2(cx + width * 0.5f, cy + height * 0.5f), Vector2.zero, Vector2.zero);
++        bar.rectTransform.localEulerAngles = new Vector3(0f, 0f, angle);
++    }
++
+     private CanvasGroup CreateGroup(string name, Transform parent)
+     {
+         GameObject obj = new GameObject(name);
+@@ -480,7 +482,8 @@ public class AgentUIManager : MonoBehaviour
+             _statusText.alignment = full ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter;
+             _statusText.fontSize = full ? 17 : 22;
+         }
+-        if (_modeButtonLabel != null) _modeButtonLabel.text = full ? "Свернуть" : "Открыть интерфейс";
++        if (_modeIconMenu != null) _modeIconMenu.SetActive(!full);
++        if (_modeIconClose != null) _modeIconClose.SetActive(full);
+     }
+ 
+     private static void SetGroup(CanvasGroup group, float alpha)
+@@ -492,6 +495,23 @@ public class AgentUIManager : MonoBehaviour
+         group.blocksRaycasts = active;
+     }
+ 
++    private void OnAvatarTapped()
++    {
++        Barabashka.Contracts.AgentActivity activity = Barabashka.Contracts.AgentActivityBus.Current;
++        if (activity == Barabashka.Contracts.AgentActivity.Speaking)
++        {
++            Barabashka.Contracts.AgentVoiceControl.RequestStopSpeaking();
++            return;
++        }
++        if (activity == Barabashka.Contracts.AgentActivity.Thinking)
++        {
++            if (_agentManager != null) _agentManager.StopCurrentTask();
++            return;
++        }
++        AvatarVisualizer avatar = GetComponent<AvatarVisualizer>();
++        if (avatar != null) avatar.TriggerGreet();
++    }
++
+     private void ToggleMute()
+     {
+         Barabashka.Contracts.AgentVoiceControl.SetMuted(!Barabashka.Contracts.AgentVoiceControl.Muted);
+@@ -505,9 +525,7 @@ public class AgentUIManager : MonoBehaviour
+     private void UpdateMicVisuals()
+     {
+         bool muted = Barabashka.Contracts.AgentVoiceControl.Muted;
+-        Color on = new Color(0.12f, 0.50f, 0.36f, 1f);
+         Color off = new Color(0.45f, 0.15f, 0.20f, 1f);
+-        SetMicButton(_micBig, muted ? "Микрофон выключен" : "Микрофон включён", muted ? off : on);
+         SetMicButton(_micSmall, muted ? "OFF" : "MIC", muted ? off : new Color(0.12f, 0.18f, 0.27f, 1f));
+     }
+ 

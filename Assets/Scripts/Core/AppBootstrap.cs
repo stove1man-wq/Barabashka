@@ -9,6 +9,12 @@ public static class AppBootstrap
         GameObject agentObj = GameObject.Find("[AI_AGENT]");
         if (agentObj == null)
         {
+            // В сцене уже может лежать объект AI_AGENT (с AgentManager и AgentCommandRouter): используем его,
+            // иначе появятся два агента, и голос будет работать с тем, у которого нет интерфейса.
+            agentObj = GameObject.Find("AI_AGENT");
+        }
+        if (agentObj == null)
+        {
             agentObj = new GameObject("[AI_AGENT]");
         }
 
