@@ -209,7 +209,7 @@ public class AgentUIManager : MonoBehaviour
             : InputField.LineType.MultiLineNewline;
         _inputField.characterLimit = 4000;
         RectTransform inputRect = inputObject.GetComponent<RectTransform>();
-        Stretch(inputRect, new Vector2(0.035f, 0.12f), new Vector2(0.67f, 0.88f),
+        Stretch(inputRect, new Vector2(0.035f, 0.12f), new Vector2(0.77f, 0.88f),
             Vector2.zero, Vector2.zero);
 
         Text inputText = CreateText("InputText", inputObject.transform, "", 24,
@@ -229,21 +229,11 @@ public class AgentUIManager : MonoBehaviour
         Button attachmentButton = CreateButton("AttachmentButton", inputPanel.transform, "＋",
             new Color(0.12f, 0.18f, 0.27f, 1f), 30);
         RectTransform attachmentRect = attachmentButton.GetComponent<RectTransform>();
-        attachmentRect.anchorMin = new Vector2(0.69f, 0.22f);
-        attachmentRect.anchorMax = new Vector2(0.77f, 0.78f);
+        attachmentRect.anchorMin = new Vector2(0.78f, 0.22f);
+        attachmentRect.anchorMax = new Vector2(0.86f, 0.78f);
         attachmentRect.offsetMin = Vector2.zero;
         attachmentRect.offsetMax = Vector2.zero;
         attachmentButton.onClick.AddListener(() => SetStatus("Вложения будут добавлены отдельным этапом"));
-
-        Button microphoneButton = CreateButton("MicrophoneButton", inputPanel.transform, "MIC",
-            new Color(0.12f, 0.18f, 0.27f, 1f), 14);
-        RectTransform microphoneRect = microphoneButton.GetComponent<RectTransform>();
-        microphoneRect.anchorMin = new Vector2(0.78f, 0.22f);
-        microphoneRect.anchorMax = new Vector2(0.86f, 0.78f);
-        microphoneRect.offsetMin = Vector2.zero;
-        microphoneRect.offsetMax = Vector2.zero;
-        _micSmall = microphoneButton;
-        microphoneButton.onClick.AddListener(ToggleMute);
 
         Button sendButton = CreateButton("SendButton", inputPanel.transform, "↑",
             new Color(0.12f, 0.48f, 0.82f, 1f), 34);
@@ -310,22 +300,28 @@ public class AgentUIManager : MonoBehaviour
         Debug.Log("[Agent UI] " + status);
     }
 
-    private void AddMessage(string speaker, string message, bool isUser)
+    /// <summary>Служебное сообщение в историю чата: в субтитры голосового режима оно не попадает (там уже есть статус).</summary>
+    public void AddSystemMessage(string text) { AddMessage("BARABASHKA", text, false, false); }
+
+    private void AddMessage(string speaker, string message, bool isUser, bool updateSubtitles = true)
     {
         if (_messageContent == null) return;
         string safeMessage = string.IsNullOrWhiteSpace(message) ? "…" : message.Trim();
         _messageHistory.Add(speaker + ": " + safeMessage);
 
-        if (isUser)
+        if (updateSubtitles)
         {
-            _subtitleUser = safeMessage;
-            _subtitleAgent = string.Empty;
+            if (isUser)
+            {
+                _subtitleUser = safeMessage;
+                _subtitleAgent = string.Empty;
+            }
+            else
+            {
+                _subtitleAgent = safeMessage;
+            }
+            RefreshSubtitles();
         }
-        else
-        {
-            _subtitleAgent = safeMessage;
-        }
-        RefreshSubtitles();
 
         GameObject card = new GameObject(isUser ? "UserMessage" : "AgentMessage");
         card.transform.SetParent(_messageContent, false);

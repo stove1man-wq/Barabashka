@@ -57,7 +57,7 @@ public class AgentManager : MonoBehaviour
     {
         if (string.IsNullOrWhiteSpace(text) || _uiManager == null) return;
         _uiManager.SetStatus(text);
-        if (inChat) _uiManager.AddAgentMessage(text);
+        if (inChat) _uiManager.AddSystemMessage(text);
     }
 
     /// <summary>Текстовый ввод из UI. Сохранён для совместимости.</summary>

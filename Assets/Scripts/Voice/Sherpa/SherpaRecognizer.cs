@@ -226,10 +226,28 @@ namespace Barabashka.Voice.SherpaEngine
 
         private void HandleChunk(float[] samples, int sampleRate)
         {
-            if (_disposed || !_listening || samples == null || samples.Length == 0 || sampleRate <= 0) return;
+            if (_disposed || samples == null || samples.Length == 0 || sampleRate <= 0) return;
+
+            float rms = Rms(samples);
+
+            // Диагностика микрофона: раз в 5 секунд пишем самый громкий кусок звука.
+            // Нет этих строк - звук с микрофона не приходит; уровень ниже порога - речь не будет замечена.
+            if (rms > _levelMax) _levelMax = rms;
+            _levelChunks++;
+            double nowSec = _clock.Elapsed.TotalSeconds;
+            if (nowSec - _levelLogAt >= 5.0)
+            {
+                Log("уровень микрофона за 5 с: max rms=" + _levelMax.ToString("F4", CultureInfo.InvariantCulture) +
+                    ", порог=" + SpeechRms.ToString("F4", CultureInfo.InvariantCulture) +
+                    ", кусков звука=" + _levelChunks + ", частота=" + sampleRate + ", слушаем=" + _listening);
+                _levelLogAt = nowSec;
+                _levelMax = 0f;
+                _levelChunks = 0;
+            }
+
+            if (!_listening) return;
 
             float dur = samples.Length / (float)sampleRate;
-            float rms = Rms(samples);
             bool loud = rms >= SpeechRms;
 
             if (!_inSpeech)
@@ -273,6 +291,9 @@ namespace Barabashka.Voice.SherpaEngine
         }
 
         private int _segmentRate = 16000;
+        private float _levelMax;
+        private int _levelChunks;
+        private double _levelLogAt;
 
         private void FinishSegment()
         {

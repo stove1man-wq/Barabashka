@@ -1,0 +1,100 @@
+diff --git a/Assets/Scripts/Core/AgentManager.cs b/Assets/Scripts/Core/AgentManager.cs
+index 0e0ae4c..f34190c 100644
+--- a/Assets/Scripts/Core/AgentManager.cs
++++ b/Assets/Scripts/Core/AgentManager.cs
+@@ -57,7 +57,7 @@ public class AgentManager : MonoBehaviour
+     {
+         if (string.IsNullOrWhiteSpace(text) || _uiManager == null) return;
+         _uiManager.SetStatus(text);
+-        if (inChat) _uiManager.AddAgentMessage(text);
++        if (inChat) _uiManager.AddSystemMessage(text);
+     }
+ 
+     /// <summary>Текстовый ввод из UI. Сохранён для совместимости.</summary>
+diff --git a/Assets/Scripts/Core/AgentUIManager.cs b/Assets/Scripts/Core/AgentUIManager.cs
+index 687d162..10a2282 100644
+--- a/Assets/Scripts/Core/AgentUIManager.cs
++++ b/Assets/Scripts/Core/AgentUIManager.cs
+@@ -310,22 +310,28 @@ public class AgentUIManager : MonoBehaviour
+         Debug.Log("[Agent UI] " + status);
+     }
+ 
+-    private void AddMessage(string speaker, string message, bool isUser)
++    /// <summary>Служебное сообщение в историю чата: в субтитры голосового режима оно не попадает (там уже есть статус).</summary>
++    public void AddSystemMessage(string text) { AddMessage("BARABASHKA", text, false, false); }
++
++    private void AddMessage(string speaker, string message, bool isUser, bool updateSubtitles = true)
+     {
+         if (_messageContent == null) return;
+         string safeMessage = string.IsNullOrWhiteSpace(message) ? "…" : message.Trim();
+         _messageHistory.Add(speaker + ": " + safeMessage);
+ 
+-        if (isUser)
+-        {
+-            _subtitleUser = safeMessage;
+-            _subtitleAgent = string.Empty;
+-        }
+-        else
++        if (updateSubtitles)
+         {
+-            _subtitleAgent = safeMessage;
++            if (isUser)
++            {
++                _subtitleUser = safeMessage;
++                _subtitleAgent = string.Empty;
++            }
++            else
++            {
++                _subtitleAgent = safeMessage;
++            }
++            RefreshSubtitles();
+         }
+-        RefreshSubtitles();
+ 
+         GameObject card = new GameObject(isUser ? "UserMessage" : "AgentMessage");
+         card.transform.SetParent(_messageContent, false);
+diff --git a/Assets/Scripts/Voice/Sherpa/SherpaRecognizer.cs b/Assets/Scripts/Voice/Sherpa/SherpaRecognizer.cs
+index 9d7ecdb..bbe7e13 100644
+--- a/Assets/Scripts/Voice/Sherpa/SherpaRecognizer.cs
++++ b/Assets/Scripts/Voice/Sherpa/SherpaRecognizer.cs
+@@ -226,10 +226,28 @@ namespace Barabashka.Voice.SherpaEngine
+ 
+         private void HandleChunk(float[] samples, int sampleRate)
+         {
+-            if (_disposed || !_listening || samples == null || samples.Length == 0 || sampleRate <= 0) return;
++            if (_disposed || samples == null || samples.Length == 0 || sampleRate <= 0) return;
+ 
+-            float dur = samples.Length / (float)sampleRate;
+             float rms = Rms(samples);
++
++            // Диагностика микрофона: раз в 5 секунд пишем самый громкий кусок звука.
++            // Нет этих строк - звук с микрофона не приходит; уровень ниже порога - речь не будет замечена.
++            if (rms > _levelMax) _levelMax = rms;
++            _levelChunks++;
++            double nowSec = _clock.Elapsed.TotalSeconds;
++            if (nowSec - _levelLogAt >= 5.0)
++            {
++                Log("уровень микрофона за 5 с: max rms=" + _levelMax.ToString("F4", CultureInfo.InvariantCulture) +
++                    ", порог=" + SpeechRms.ToString("F4", CultureInfo.InvariantCulture) +
++                    ", кусков звука=" + _levelChunks + ", частота=" + sampleRate + ", слушаем=" + _listening);
++                _levelLogAt = nowSec;
++                _levelMax = 0f;
++                _levelChunks = 0;
++            }
++
++            if (!_listening) return;
++
++            float dur = samples.Length / (float)sampleRate;
+             bool loud = rms >= SpeechRms;
+ 
+             if (!_inSpeech)
+@@ -273,6 +291,9 @@ namespace Barabashka.Voice.SherpaEngine
+         }
+ 
+         private int _segmentRate = 16000;
++        private float _levelMax;
++        private int _levelChunks;
++        private double _levelLogAt;
+ 
+         private void FinishSegment()
+         {

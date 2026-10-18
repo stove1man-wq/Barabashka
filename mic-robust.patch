@@ -1,0 +1,143 @@
+diff --git a/Assets/Scripts/Composition/SpeechCoordinator.cs b/Assets/Scripts/Composition/SpeechCoordinator.cs
+index c1caa3a..f3f9e57 100644
+--- a/Assets/Scripts/Composition/SpeechCoordinator.cs
++++ b/Assets/Scripts/Composition/SpeechCoordinator.cs
+@@ -37,7 +37,19 @@ namespace Barabashka.Composition
+             AgentActivityBus.Publish(AgentActivity.Speaking);
+             try
+             {
+-                await _tts.SpeakAsync(text, languageCode, token);
++                // Если синтезатор «завис» и не сообщает об окончании, не оставляем микрофон выключенным навсегда.
++                Task speak = _tts.SpeakAsync(text, languageCode, token);
++                float maxSeconds = 8f + text.Length * 0.12f;
++                Task finished = await Task.WhenAny(speak, Task.Delay(TimeSpan.FromSeconds(maxSeconds)));
++                if (finished != speak)
++                {
++                    Debug.LogWarning("[Speech] Озвучка не завершилась за " + maxSeconds.ToString("F0") + " с, прерываю и включаю микрофон.");
++                    _tts.Stop();
++                }
++                else
++                {
++                    await speak; // пробросить отмену или ошибку
++                }
+                 // Небольшая пауза: хвост звука из колонок не должен попасть в микрофон.
+                 await Task.Delay(EchoTailMs);
+             }
+diff --git a/Assets/Scripts/Core/AgentUIManager.cs b/Assets/Scripts/Core/AgentUIManager.cs
+index 10a2282..e86e770 100644
+--- a/Assets/Scripts/Core/AgentUIManager.cs
++++ b/Assets/Scripts/Core/AgentUIManager.cs
+@@ -541,8 +541,8 @@ public class AgentUIManager : MonoBehaviour
+     private void UpdateMicVisuals()
+     {
+         bool muted = Barabashka.Contracts.AgentVoiceControl.Muted;
+-        Color off = new Color(0.45f, 0.15f, 0.20f, 1f);
+-        SetMicButton(_micSmall, muted ? "OFF" : "MIC", muted ? off : new Color(0.12f, 0.18f, 0.27f, 1f));
++        Color off = new Color(0.28f, 0.31f, 0.37f, 1f); // серый: микрофон выключен
++        SetMicButton(_micSmall, muted ? "OFF" : "MIC", muted ? off : new Color(0.12f, 0.50f, 0.36f, 1f));
+     }
+ 
+     private static void SetMicButton(Button button, string label, Color color)
+@@ -550,10 +550,11 @@ public class AgentUIManager : MonoBehaviour
+         if (button == null) return;
+         Image image = button.targetGraphic as Image;
+         if (image != null) image.color = color;
++        // Цвет задаётся самой картинкой, поэтому тонировка кнопки белая (иначе цвет умножается сам на себя).
+         ColorBlock colors = button.colors;
+-        colors.normalColor = color;
+-        colors.highlightedColor = Color.Lerp(color, Color.white, 0.12f);
+-        colors.pressedColor = Color.Lerp(color, Color.black, 0.18f);
++        colors.normalColor = Color.white;
++        colors.highlightedColor = Color.white;
++        colors.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+         button.colors = colors;
+         Text text = button.GetComponentInChildren<Text>();
+         if (text != null) text.text = label;
+diff --git a/Assets/Scripts/Voice/Sherpa/SherpaRecognizer.cs b/Assets/Scripts/Voice/Sherpa/SherpaRecognizer.cs
+index bbe7e13..a1b0a96 100644
+--- a/Assets/Scripts/Voice/Sherpa/SherpaRecognizer.cs
++++ b/Assets/Scripts/Voice/Sherpa/SherpaRecognizer.cs
+@@ -180,7 +180,42 @@ namespace Barabashka.Voice.SherpaEngine
+             }
+ 
+             _listening = true;
++            _lastChunkAt = _clock.Elapsed.TotalSeconds;
+             SetState(RecognizerState.Listening);
++            if (!_watchdogRunning) WatchdogAsync();
++        }
++
++        // Если микрофон «включён», но звук не приходит (на телефонах после озвучки так бывает), перезапускаем захват.
++        private async void WatchdogAsync()
++        {
++            _watchdogRunning = true;
++            try
++            {
++                while (_listening && !_disposed)
++                {
++                    await Task.Delay(1500);
++                    if (!_listening || _disposed) break;
++
++                    double silentFor = _clock.Elapsed.TotalSeconds - _lastChunkAt;
++                    if (silentFor < 3.0) continue;
++
++                    Debug.LogWarning("[Sherpa] Звук с микрофона не приходит " + silentFor.ToString("F1", CultureInfo.InvariantCulture) +
++                        " с, перезапускаю захват.");
++                    try { _mic.StopCapture(); }
++                    catch (Exception e) { Debug.LogException(e); }
++
++                    if (!_mic.TryStartCapture())
++                    {
++                        RaiseError("Не удалось перезапустить микрофон.");
++                        break;
++                    }
++                    _lastChunkAt = _clock.Elapsed.TotalSeconds;
++                }
++            }
++            finally
++            {
++                _watchdogRunning = false;
++            }
+         }
+ 
+         public void StopListening()
+@@ -229,6 +264,11 @@ namespace Barabashka.Voice.SherpaEngine
+             if (_disposed || samples == null || samples.Length == 0 || sampleRate <= 0) return;
+ 
+             float rms = Rms(samples);
++            _lastChunkAt = _clock.Elapsed.TotalSeconds;
++
++            // Порог речи подстраивается под шум: тихие микрофоны телефонов не должны «не слышать» голос.
++            // Он никогда не выше прежнего фиксированного значения SpeechRms.
++            float threshold = Mathf.Clamp(_noise * 3f + 0.002f, 0.005f, SpeechRms);
+ 
+             // Диагностика микрофона: раз в 5 секунд пишем самый громкий кусок звука.
+             // Нет этих строк - звук с микрофона не приходит; уровень ниже порога - речь не будет замечена.
+@@ -238,7 +278,7 @@ namespace Barabashka.Voice.SherpaEngine
+             if (nowSec - _levelLogAt >= 5.0)
+             {
+                 Log("уровень микрофона за 5 с: max rms=" + _levelMax.ToString("F4", CultureInfo.InvariantCulture) +
+-                    ", порог=" + SpeechRms.ToString("F4", CultureInfo.InvariantCulture) +
++                    ", порог=" + threshold.ToString("F4", CultureInfo.InvariantCulture) +
+                     ", кусков звука=" + _levelChunks + ", частота=" + sampleRate + ", слушаем=" + _listening);
+                 _levelLogAt = nowSec;
+                 _levelMax = 0f;
+@@ -248,7 +288,8 @@ namespace Barabashka.Voice.SherpaEngine
+             if (!_listening) return;
+ 
+             float dur = samples.Length / (float)sampleRate;
+-            bool loud = rms >= SpeechRms;
++            bool loud = rms >= threshold;
++            if (!_inSpeech && !loud) _noise = Mathf.Lerp(_noise, Mathf.Min(rms, 0.05f), 0.03f);
+ 
+             if (!_inSpeech)
+             {
+@@ -291,6 +332,9 @@ namespace Barabashka.Voice.SherpaEngine
+         }
+ 
+         private int _segmentRate = 16000;
++        private bool _watchdogRunning;
++        private double _lastChunkAt;
++        private float _noise = 0.003f;   // оценка уровня фонового шума
+         private float _levelMax;
+         private int _levelChunks;
+         private double _levelLogAt;
