@@ -56,6 +56,32 @@ public static class AgentToolCatalog
     }
 
     /// <summary>
+    /// Короткий и неизменный в течение суток запрос для маленькой модели в телефоне: чем он короче и стабильнее,
+    /// тем меньше времени уходит на его обработку (одинаковое начало запроса модель запоминает и не считает заново).
+    /// Поэтому здесь нет текущего времени и календаря.
+    /// </summary>
+    public static string BuildCompactPrompt(DateTime now)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Ты - Барабашка, помощник. Отвечай ТОЛЬКО одним JSON-объектом.");
+        sb.AppendLine("Вопрос, разговор, «расскажи», «объясни», «что такое»: {\"reply\":\"ответ по-русски, 1-3 коротких предложения\"}.");
+        sb.AppendLine("Инструмент вызывай, только если пользователь прямо просит действие: {\"tool\":\"имя\", ...поля}.");
+        sb.AppendLine("Примеры: «расскажи про космос» -> {\"reply\":\"Космос - это...\"}; «добавь задачу купить хлеб» -> {\"tool\":\"task_add\",\"title\":\"купить хлеб\",\"due\":\"\"}.");
+        sb.AppendLine("Инструменты:");
+        sb.AppendLine("- time, date: {\"tool\":\"time\"} или {\"tool\":\"date\"}");
+        sb.AppendLine("- task_add: {\"tool\":\"task_add\",\"title\":\"что сделать\",\"due\":\"ГГГГ-ММ-ДД или пусто\"}");
+        sb.AppendLine("- task_list: {\"tool\":\"task_list\"}");
+        sb.AppendLine("- task_done, task_delete: {\"tool\":\"task_done\",\"numbers\":\"1,2\"}");
+        sb.AppendLine("- task_rename: {\"tool\":\"task_rename\",\"number\":\"2\",\"title\":\"новое название\"}");
+        sb.AppendLine("- open_url: {\"tool\":\"open_url\",\"url\":\"https://...\"}");
+        foreach (IAgentTool registered in AgentToolRegistry.Default.Tools)
+            sb.AppendLine("- " + registered.Name + ": " + registered.Description);
+        sb.AppendLine("Каждая реплика - отдельная просьба. При отказе («не надо», «отмена») верни {\"reply\":\"Хорошо.\"}. Не выдумывай факты, если не знаешь - так и скажи.");
+        sb.Append("Сегодня " + now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ", " + WeekDays[(int)now.DayOfWeek] + ".");
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// Превращает вызов модели в команду роутера (без префикса COMMAND:). Возвращает false и причину, если вызов некорректен.
     /// </summary>
     public static bool TryBuildCommand(Dictionary<string, string> args, out string command, out string error)

@@ -96,7 +96,7 @@ public class AgentCommandRouter : MonoBehaviour
     /// <summary>Агент ждёт ответа «да»/«нет» на вопрос об удалении (и ожидание ещё не истекло).</summary>
     public bool HasPendingConfirmation
     {
-        get { return _pendingDeleteIndex != null && Time.unscaledTime <= _pendingUntil; }
+        get { return (_pendingDeleteIndex != null && Time.unscaledTime <= _pendingUntil) || ActionGate.HasPending; }
     }
 
     private void AskToConfirmDelete(string index)
@@ -122,6 +122,7 @@ public class AgentCommandRouter : MonoBehaviour
     /// </summary>
     public bool TryHandlePending(string userText)
     {
+        if (ActionGate.HasPending) return HandleActionGate(userText);
         if (_pendingDeleteIndex == null) return false;
 
         Debug.Log("[Confirm] Получен ответ: «" + userText + "»");
@@ -160,6 +161,40 @@ public class AgentCommandRouter : MonoBehaviour
 
         // Ответ не похож на «да»/«нет»: считаем, что пользователь передумал, и разбираем фразу как обычную.
         return false;
+    }
+
+    // Ответ на вопрос перед звонком/сообщением (режим «С подтверждением»).
+    private bool HandleActionGate(string userText)
+    {
+        Func<System.Threading.Tasks.Task<string>> action = ActionGate.Take();
+        if (action == null) return false;
+
+        string[] words = (userText ?? string.Empty).ToLowerInvariant()
+            .Split(new[] { ' ', ',', '.', '!', '?', ';', ':' }, StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0 || words.Length > 4) return false;
+
+        bool no = false, yes = false;
+        foreach (string w in words)
+        {
+            if (w == "нет" || w == "не" || w == "отмена" || w == "отмени" || w == "стоп" || w == "отбой") no = true;
+            if (w == "да" || w == "ага" || w == "угу" || w == "конечно" || w == "давай" || w == "подтверждаю" ||
+                w == "делай" || w == "сделай" || w == "ок" || w == "окей" || w == "верно" || w == "звони" || w == "отправляй") yes = true;
+        }
+
+        if (no) { ShowResponse("Хорошо, не делаю."); return true; }
+        if (!yes) return false;
+        RunConfirmedAction(action);
+        return true;
+    }
+
+    private async void RunConfirmedAction(Func<System.Threading.Tasks.Task<string>> action)
+    {
+        try { ShowResponse(await action()); }
+        catch (Exception ex)
+        {
+            Debug.LogException(ex);
+            ShowResponse("Не получилось выполнить действие: " + ex.Message);
+        }
     }
 
     // Инструменты нового образца: «TOOL|имя|ключ=значение&ключ=значение».

@@ -2,9 +2,22 @@
 <!-- Android 11+: без этого приложение не видит установленные синтезаторы речи, и TextToSpeech не запускается. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.barabashka.ttsqueries">
+    <!-- Будильник через системные часы. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Звонки и сообщения по имени из контактов (разрешения запрашиваются при первом использовании). -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- Без этого Google Play скрыл бы приложение на планшетах без телефонного модуля. -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <!-- Список приложений с значком запуска: нужен, чтобы открывать приложения по названию («открой телеграм»). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
 </manifest>

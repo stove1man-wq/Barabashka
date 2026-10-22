@@ -35,6 +35,8 @@ public class AgentManager : MonoBehaviour
         _brain = new HybridBrain(new LegacyBrainAdapter(new IsolatedBrain()), new LlmClient());
         _router = GetComponent<AgentCommandRouter>();
 
+        LocalModel.Finished += OnLocalModelFinished;
+
         // Сервис напоминаний и таймеров живёт на том же объекте.
         if (GetComponent<AgentReminderService>() == null) gameObject.AddComponent<AgentReminderService>();
 
@@ -45,10 +47,36 @@ public class AgentManager : MonoBehaviour
     private void Start()
     {
         Debug.Log("[AgentManager] Изолированное ядро и UI успешно инициализированы.");
+        PreloadLocalModel();
+    }
+
+    // Если подключена модель в телефоне, загружаем её заранее в фоне: первый вопрос не будет ждать загрузку.
+    private void PreloadLocalModel()
+    {
+        try
+        {
+            if (!LlmSettings.Enabled || LocalLlmHost.Current == null) return;
+            foreach (LlmProfile p in LlmProfiles.Extra())
+            {
+                if (!p.IsDevice || !LocalModel.Exists(p.model)) continue;
+                _ = LocalLlmHost.Current.PreloadAsync(p.model, AgentToolCatalog.BuildCompactPrompt(DateTime.Now));
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[AgentManager] Предзагрузка модели: " + ex.Message);
+        }
+    }
+
+    private void OnLocalModelFinished(string message)
+    {
+        if (_router != null) _router.Announce(message, true);
     }
 
     private void OnDestroy()
     {
+        LocalModel.Finished -= OnLocalModelFinished;
         if (_cts != null) _cts.Cancel();
     }
 
@@ -61,6 +89,12 @@ public class AgentManager : MonoBehaviour
         if (string.IsNullOrWhiteSpace(text) || _uiManager == null) return;
         _uiManager.SetStatus(text);
         if (inChat) _uiManager.AddSystemMessage(text);
+    }
+
+    /// <summary>Голосовая модель загружена: показать приветствие и «Готов к работе».</summary>
+    public void ShowReady()
+    {
+        if (_uiManager != null) _uiManager.ShowReady();
     }
 
     /// <summary>Текстовый ввод из UI. Сохранён для совместимости.</summary>
@@ -114,6 +148,24 @@ public class AgentManager : MonoBehaviour
         // Управление режимом голосом или текстом: ответ только в чат, без озвучки.
         if (_router != null && !_router.HasPendingConfirmation && _uiManager != null)
         {
+            if (WantsSettings(message))
+            {
+                _uiManager.AddUserMessage(message);
+                _uiManager.ShowSettings();
+                AgentActivityBus.PublishResting();
+                return;
+            }
+            int speakToggle = SpeakToggleRequest(message);
+            if (speakToggle != 0)
+            {
+                _uiManager.AddUserMessage(message);
+                AppSettings.SpeakReplies = speakToggle > 0;
+                _uiManager.AddAgentMessage(speakToggle > 0
+                    ? "Озвучка ответов включена."
+                    : "Озвучка ответов выключена. Вернуть: «включи озвучку».");
+                AgentActivityBus.PublishResting();
+                return;
+            }
             if (WantsInterface(message))
             {
                 _uiManager.AddUserMessage(message);
@@ -241,6 +293,32 @@ public class AgentManager : MonoBehaviour
             foreach (string s in stems)
                 if (w.StartsWith(s, StringComparison.Ordinal)) return true;
         return false;
+    }
+
+    // Просьба открыть настройки: «открой настройки», «настрой меня», «/настройки».
+    private static bool WantsSettings(string text)
+    {
+        string trimmed = (text ?? string.Empty).Trim();
+        if (trimmed.StartsWith("/настройки", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("/settings", StringComparison.OrdinalIgnoreCase)) return true;
+
+        string[] words = Words(text);
+        if (words.Length == 0 || words.Length > 6) return false;
+        if (HasStem(words, "добав", "запиш", "созда", "удал", "перемен", "напомн")) return false;
+        // «Открой настройки вайфай / телефона» - это настройки телефона, их открывает инструмент phone_settings.
+        if (HasStem(words, "телефон", "вайфай", "вай", "wi", "блютуз", "блютус", "bluetooth")) return false;
+        return HasStem(words, "настройк") || (HasStem(words, "настро") && HasAny(words, "меня", "тебя"));
+    }
+
+    // «Выключи озвучку» / «включи озвучку»: -1 выключить, 1 включить, 0 - это не она.
+    private static int SpeakToggleRequest(string text)
+    {
+        string[] words = Words(text);
+        if (words.Length == 0 || words.Length > 8) return 0;
+        if (!HasStem(words, "озвуч", "голосов")) return 0;
+        if (HasStem(words, "выключ", "отключ", "убер", "останов")) return -1;
+        if (HasStem(words, "включ", "верн", "вруби")) return 1;
+        return 0;
     }
 
     // Просьба открыть полный интерфейс: «открой интерфейс», «дай писать», «я не могу говорить» (слова в любом порядке).

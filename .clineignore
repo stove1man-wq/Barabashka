@@ -17,5 +17,5 @@ ProjectSettings/
 *.prefab
 *.apk
 *.aab
-ignore.conf
-test.txt.vsconfig
+*.patch
+*.gguf

@@ -8,10 +8,15 @@ using UnityEngine;
 public class LlmProfile
 {
     public string name;
-    public string kind;     // "ollama" или "openai"
+    public string kind;     // "ollama", "openai" или "device" (модель на самом устройстве, model - путь к файлу)
     public string url;      // для openai - адрес до /v1, например https://openrouter.ai/api/v1
     public string model;
     public string apiKey;
+
+    public bool IsDevice
+    {
+        get { return string.Equals(kind, "device", StringComparison.OrdinalIgnoreCase); }
+    }
 
     public bool IsOpenAi
     {
@@ -97,7 +102,13 @@ public static class LlmProfiles
     {
         var list = new List<LlmProfile>();
         if (LlmSettings.OllamaUsable) list.Add(OllamaProfile());
-        list.AddRange(Extra());
+        LlmProfile device = null;
+        foreach (LlmProfile p in Extra())
+        {
+            if (p.IsDevice) device = p;   // модель в телефоне медленнее остальных: обращаемся к ней в последнюю очередь
+            else list.Add(p);
+        }
+        if (device != null) list.Add(device);
         return list;
     }
 

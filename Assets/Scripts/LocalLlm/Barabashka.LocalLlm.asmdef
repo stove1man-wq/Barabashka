@@ -1,0 +1,20 @@
+{
+    "name": "Barabashka.LocalLlm",
+    "rootNamespace": "Barabashka.LocalLlm",
+    "references": [ "Barabashka.Contracts", "undream.llmunity.Runtime" ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [ "BARABASHKA_LLMUNITY" ],
+    "versionDefines": [
+        {
+            "name": "ai.undream.llm",
+            "expression": "0.0.1",
+            "define": "BARABASHKA_LLMUNITY"
+        }
+    ],
+    "noEngineReferences": false
+}

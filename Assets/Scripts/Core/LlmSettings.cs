@@ -62,6 +62,13 @@ public static class LlmSettings
         set { PlayerPrefs.SetString(UrlKey, (value ?? string.Empty).Trim().TrimEnd('/')); PlayerPrefs.Save(); }
     }
 
+    /// <summary>Забыть заданный вручную адрес Ollama (останется адрес по умолчанию).</summary>
+    public static void ClearUrl()
+    {
+        PlayerPrefs.DeleteKey(UrlKey);
+        PlayerPrefs.Save();
+    }
+
     public static string Model
     {
         get

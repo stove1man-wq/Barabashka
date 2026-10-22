@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 
-public class AgentUIManager : MonoBehaviour
+public partial class AgentUIManager : MonoBehaviour
 {
     private AgentManager _agentManager;
     private InputField _inputField;
@@ -71,8 +71,8 @@ public class AgentUIManager : MonoBehaviour
         BuildInterface();
         ApplyLayout();
         UpdateMicVisuals();
-        AddMessage("Barabashka", "Привет! Я готов помочь. Говорите или откройте интерфейс, чтобы написать.", false);
-        SetStatus("Готов к работе");
+        // Приветствие и «Готов к работе» появятся после загрузки голосовой модели (ShowReady), пока - только строка о загрузке.
+        SetStatus("Подготовка голосового ввода…");
     }
 
     private void BuildInterface()
@@ -288,6 +288,8 @@ public class AgentUIManager : MonoBehaviour
             new Color(0.30f, 0.40f, 0.53f), TextAnchor.MiddleLeft);
         Place(footer.rectTransform, new Vector2(0.06f, 0.015f), new Vector2(0.82f, 0.045f),
             Vector2.zero, Vector2.zero);
+
+        BuildSettingsUi(canvasObject.transform);
     }
 
     public void AddUserMessage(string text) { AddMessage("Вы", text, true); }
@@ -453,6 +455,8 @@ public class AgentUIManager : MonoBehaviour
 
     private void Update()
     {
+        if (HandleSettingsBack()) return;
+
         // Кнопка «Назад» на Android приходит как Escape.
         if (_fullMode && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             SetMode(false);

@@ -39,6 +39,16 @@ public class IsolatedBrain : IAgentBrain
         // Числа словами -> цифры («задачу два» -> «задачу 2»): распознавание речи часто даёт слова.
         string lowerNum = RuNumbers.Replace(lower);
 
+        // Звонки и сообщения людям из контактов: раньше напоминаний, чтобы «напиши, что буду через 5 минут» не стало таймером.
+        string contactCommand;
+        if (!IsRefusal(lower) && AgentPhoneParser.TryContactAction(lowerNum, lower, out contactCommand))
+            return Task.FromResult("COMMAND:" + contactCommand);
+
+        // Будильник системными часами («разбуди меня в 7 утра»).
+        string alarmCommand;
+        if (AgentReminderParser.TryAlarm(lower, DateTime.Now, out alarmCommand))
+            return Task.FromResult("COMMAND:" + alarmCommand);
+
         // Напоминания и таймеры («напомни через 10 минут…», «поставь таймер на 5 минут») - раньше задач.
         string reminderCommand;
         if (AgentReminderParser.TryHandle(lower, DateTime.Now, out reminderCommand))
@@ -73,6 +83,11 @@ public class IsolatedBrain : IAgentBrain
         // Отказ («не надо ничего открывать», «не открывай»): ничего не выполняем, иначе слова вроде «браузер» сработают снова.
         if (IsRefusal(lower))
             return Task.FromResult("Хорошо, ничего не делаю.");
+
+        // Действия на телефоне: фонарик, громкость, заряд, поиск, сайты, карты, набор номера, настройки.
+        string phoneCommand;
+        if (AgentPhoneParser.TryHandle(lowerNum, lower, out phoneCommand))
+            return Task.FromResult("COMMAND:" + phoneCommand);
 
         if (IsTaskListRequest(lower))
             return Task.FromResult("COMMAND:TASK_LIST");

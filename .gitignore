@@ -40,3 +40,11 @@ Thumbs.db
 # Backups and Unity recovery scenes
 *.bak_*
 /Assets/_Recovery/
+
+# Патчи и локальные модели
+/*.patch
+*.gguf
+
+# LLMUnity native libraries (several GB, downloaded by the package)
+/Assets/StreamingAssets/LlamaLib*
+/cleanup*.ps1

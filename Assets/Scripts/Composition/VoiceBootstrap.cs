@@ -63,7 +63,7 @@ namespace Barabashka.Composition
                 }
 
                 // На телефоне агент пишет в чат, что происходит: первая загрузка модели может занять несколько минут.
-                bool inChat = Application.platform == RuntimePlatform.Android;
+                // Пока модель грузится, в строке статуса - только запись об этом; в чат пишем после готовности.
                 _agent.ShowSystemNotice("Подготовка голосового ввода…", false);
 
                 bool micAllowed = await EnsureMicrophoneAsync(_cts.Token);
@@ -86,8 +86,8 @@ namespace Barabashka.Composition
                 };
 
                 _agent.ShowSystemNotice(
-                    "Загружаю голосовую модель. При первом запуске она скачивается (около 225 МБ), нужен интернет. Текстовый ввод уже работает.",
-                    inChat);
+                    "Загружаю голосовую модель. При первом запуске она скачивается (около 225 МБ), нужен интернет.",
+                    false);
 
                 Debug.Log("[Voice] Загружаю модель распознавания (" + _recognizer.Id + ")...");
                 await _recognizer.InitializeAsync(
@@ -104,6 +104,7 @@ namespace Barabashka.Composition
 
                 AgentVoiceControl.MutedChanged += OnMutedChanged;
                 AgentVoiceControl.StopSpeakingRequested += OnStopSpeaking;
+                _agent.ShowReady();
                 ApplyListening();
                 _speech.Say("Голосовой ввод готов.", "ru");
             }
@@ -222,6 +223,7 @@ namespace Barabashka.Composition
             if (AgentManager.LastInputSource != InputSource.Voice) return;
             // «Покажи / выведи» - ответ только на экране, без озвучки.
             if (AgentManager.LastRequestShowOnly) return;
+            if (!AppSettings.SpeakReplies) return;
 
             string speech = SpeechText(text);
             IMainThread main = MainThreadDispatcher.Instance;

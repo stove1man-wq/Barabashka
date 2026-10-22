@@ -47,6 +47,19 @@ public sealed class AgentToolRegistry : IToolRegistry
         registry.Register(new NoteAddTool());
         registry.Register(new NoteListTool());
         registry.Register(new NoteDeleteTool());
+        registry.Register(new FlashlightTool());
+        registry.Register(new VolumeTool());
+        registry.Register(new BatteryTool());
+        registry.Register(new WebSearchTool());
+        registry.Register(new OpenSiteTool());
+        registry.Register(new RouteTool());
+        registry.Register(new DialTool());
+        registry.Register(new PhoneSettingsTool());
+        registry.Register(new OpenAppTool());
+        registry.Register(new AlarmSetTool());
+        registry.Register(new AlarmShowTool());
+        registry.Register(new CallTool());
+        registry.Register(new MessageTool());
         return registry;
     }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Barabashka.Contracts;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -23,6 +24,7 @@ public sealed class LlmClient
 {
     private const int SingleProfileTimeoutSec = 60;
     private const int ChainTimeoutSec = 25;
+    private const int DeviceTimeoutSec = 240;
     private const double BlockSeconds = 180.0;
 
     [Serializable] public class OllamaReply { public OllamaMessage message; }
@@ -45,7 +47,7 @@ public sealed class LlmClient
     }
 
     public async Task<string> ChatAsync(string system, IList<KeyValuePair<string, string>> history,
-        string userText, bool jsonMode, CancellationToken ct)
+        string userText, bool jsonMode, CancellationToken ct, string deviceSystem = null)
     {
         List<LlmProfile> chain = LlmProfiles.Chain();
         if (chain.Count == 0)
@@ -69,7 +71,7 @@ public sealed class LlmClient
                 attempted = true;
                 try
                 {
-                    string content = await CallAsync(profile, system, history, userText, jsonMode, timeout, ct);
+                    string content = await CallAsync(profile, system, history, userText, jsonMode, timeout, ct, deviceSystem);
                     _blockedUntil.Remove(profile.name);
                     LastProfileName = profile.name;
                     return content;
@@ -91,8 +93,10 @@ public sealed class LlmClient
     }
 
     private async Task<string> CallAsync(LlmProfile profile, string system, IList<KeyValuePair<string, string>> history,
-        string userText, bool jsonMode, int timeoutSec, CancellationToken ct)
+        string userText, bool jsonMode, int timeoutSec, CancellationToken ct, string deviceSystem = null)
     {
+        if (profile.IsDevice) return await CallDeviceAsync(profile, deviceSystem ?? system, history, userText, jsonMode, ct);
+
         string baseUrl = (profile.url ?? string.Empty).Trim().TrimEnd('/');
         bool openAi = profile.IsOpenAi;
         string endpoint = baseUrl + (openAi ? "/chat/completions" : "/api/chat");
@@ -163,6 +167,47 @@ public sealed class LlmClient
             if (string.IsNullOrWhiteSpace(content))
                 throw new LlmException("пустой ответ модели", false);
             return content;
+        }
+    }
+
+    private static async Task<string> CallDeviceAsync(LlmProfile profile, string system, IList<KeyValuePair<string, string>> history,
+        string userText, bool jsonMode, CancellationToken ct)
+    {
+        ILocalLlm host = LocalLlmHost.Current;
+        if (host == null)
+            throw new LlmException("в проекте нет пакета LLMUnity, модель в телефоне недоступна", false);
+        if (!LocalModel.Exists(profile.model))
+            throw new LlmException("файл модели не найден, скачайте её: /llm телефон", false);
+
+        Task<string> work = host.ChatAsync(profile.model, system, history, userText, jsonMode, ct);
+        work.ContinueWith(t => { var ignored = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+
+        Task finished = await Task.WhenAny(work, Task.Delay(DeviceTimeoutSec * 1000, ct));
+        ct.ThrowIfCancellationRequested();
+        if (finished != work)
+            throw new LlmException("модель в телефоне не успела ответить за " + DeviceTimeoutSec + " с", true);
+
+        try
+        {
+            string content = await work;
+            if (string.IsNullOrWhiteSpace(content)) throw new LlmException("пустой ответ модели", false);
+            return content;
+        }
+        catch (LocalLlmException ex)
+        {
+            throw new LlmException(ex.Message, ex.Transient);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (LlmException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new LlmException("модель в телефоне: " + ex.Message, false);
         }
     }
 

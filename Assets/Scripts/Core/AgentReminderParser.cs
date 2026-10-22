@@ -124,6 +124,70 @@ public static class AgentReminderParser
         return false;
     }
 
+    /// <summary>
+    /// Будильник системными часами: «разбуди меня в 7 утра», «поставь будильник на 6 30», «будильник завтра в 8», «через 2 часа разбуди».
+    /// Показать или отключить: «покажи будильники», «отмени будильник».
+    /// </summary>
+    public static bool TryAlarm(string lower, DateTime now, out string command)
+    {
+        command = null;
+        if (string.IsNullOrWhiteSpace(lower)) return false;
+        string[] w = lower.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        bool alarmWord = false, wake = false, cancel = false, list = false;
+        foreach (string word in w)
+        {
+            if (word.StartsWith("будильник", StringComparison.Ordinal)) alarmWord = true;
+            if (word.StartsWith("разбуд", StringComparison.Ordinal)) wake = true;
+            if (CancelVerbs.Contains(word)) cancel = true;
+            if (ListWords.Contains(word)) list = true;
+        }
+        if (!alarmWord && !wake) return false;
+
+        if (alarmWord && (cancel || list))
+        {
+            command = "TOOL|alarm_show|";
+            return true;
+        }
+
+        // Через промежуток: «через 2 часа разбуди меня».
+        for (int i = 0; i < w.Length; i++)
+        {
+            if (w[i] != "через") continue;
+            TimeSpan span;
+            int end;
+            if (!TryDuration(w, i + 1, out span, out end)) continue;
+            command = AlarmCommand(now + span);
+            return true;
+        }
+
+        string dayWord = null;
+        foreach (string word in w)
+            if (word == "сегодня" || word == "завтра" || word == "послезавтра") dayWord = word;
+
+        for (int i = 0; i < w.Length - 1; i++)
+        {
+            if (w[i] != "в" && w[i] != "на" && w[i] != "к") continue;
+            int hour, minute, end;
+            string dayPart;
+            if (!TryClock(w, i + 1, out hour, out minute, out dayPart, out end)) continue;
+            DateTime due;
+            if (!ResolveDue(now, dayWord, hour, minute, dayPart, out due)) return false;
+            command = AlarmCommand(due);
+            return true;
+        }
+        return false;
+    }
+
+    private static string AlarmCommand(DateTime due)
+    {
+        var pairs = new List<KeyValuePair<string, string>>
+        {
+            new KeyValuePair<string, string>("at", due.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture))
+        };
+        return "TOOL|alarm_set|" + AgentToolRegistry.BuildQuery(pairs);
+    }
+
     // ---- сборка команды ----
 
     private static string BuildAdd(string text, DateTime? dueLocal, TimeSpan span, bool isTimer)
