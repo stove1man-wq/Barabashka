@@ -22,7 +22,9 @@ public partial class AgentUIManager
     private bool _settingsOpen;
 
     private bool _setSpeak, _setLlm, _setDevice;
-    private Button _speakButton, _llmButton, _deviceButton, _actionsButton;
+    private Button _speakButton, _llmButton, _deviceButton, _actionsButton, _keepButton, _trashButton;
+    private ChatKeep _setKeep;
+    private bool _setTrash;
     private ActionLevel _setActions;
     private InputField _ollamaInput, _cityInput, _openRouterInput, _groqInput;
 
@@ -138,6 +140,15 @@ public partial class AgentUIManager
             RefreshToggles();
         });
 
+        AddSectionLabel("ЧАТ");
+        AddHint("Сообщения можно смахнуть вправо. То же голосом: «удали последнее сообщение», «очисти чат», «верни сообщение». Команда «/чат» напомнит всё.");
+        _keepButton = AddToggle(() =>
+        {
+            _setKeep = _setKeep == ChatKeep.Never ? ChatKeep.Week : _setKeep == ChatKeep.Week ? ChatKeep.Forever : ChatKeep.Never;
+            RefreshToggles();
+        });
+        _trashButton = AddToggle(() => { _setTrash = !_setTrash; RefreshToggles(); });
+
         AddSectionLabel("УМНЫЕ ОТВЕТЫ (необязательно)");
         AddHint("Агент сам понимает все команды. Модель нужна для вопросов и рассуждений вне команд.");
         _llmButton = AddToggle(() => { _setLlm = !_setLlm; RefreshToggles(); });
@@ -242,6 +253,17 @@ public partial class AgentUIManager
         button.transform.Find("Label").GetComponent<Text>().text = title + ":  " + (on ? "ВКЛ" : "ВЫКЛ");
     }
 
+    private void SetCycleVisual(Button button, string title, Color color)
+    {
+        ColorBlock colors = button.colors;
+        colors.normalColor = color;
+        colors.highlightedColor = Color.Lerp(color, Color.white, 0.12f);
+        colors.pressedColor = Color.Lerp(color, Color.black, 0.18f);
+        button.colors = colors;
+        (button.targetGraphic as Image).color = Color.white;
+        button.transform.Find("Label").GetComponent<Text>().text = title;
+    }
+
     private void RefreshToggles()
     {
         {
@@ -255,6 +277,8 @@ public partial class AgentUIManager
             (_actionsButton.targetGraphic as Image).color = Color.white;
             _actionsButton.transform.Find("Label").GetComponent<Text>().text = AppSettings.ActionsTitle(_setActions);
         }
+        SetCycleVisual(_keepButton, AppSettings.ChatKeepTitle(_setKeep), _setKeep == ChatKeep.Never ? ToggleOff : ToggleOn);
+        SetCycleVisual(_trashButton, AppSettings.ChatTrashTitle(_setTrash), _setTrash ? ToggleOn : ToggleOff);
         SetToggleVisual(_speakButton, "Озвучивать ответы", _setSpeak);
         SetToggleVisual(_llmButton, "Умные ответы через сеть", _setLlm);
         SetToggleVisual(_deviceButton, "Модель в телефоне (без сети)", _setDevice);
@@ -284,6 +308,8 @@ public partial class AgentUIManager
         if (_settingsPanel == null) return;
         _setSpeak = AppSettings.SpeakReplies;
         _setActions = AppSettings.Actions;
+        _setKeep = AppSettings.ChatHistory;
+        _setTrash = AppSettings.ChatTrash;
         _setLlm = LlmSettings.Enabled;
         _setDevice = HasDeviceProfile();
 
@@ -337,6 +363,9 @@ public partial class AgentUIManager
 
         AppSettings.SpeakReplies = _setSpeak;
         AppSettings.Actions = _setActions;
+        AppSettings.ChatHistory = _setKeep;
+        AppSettings.ChatTrash = _setTrash;
+        Persist();
         LlmSettings.Enabled = _setLlm;
         if (url.Length == 0) LlmSettings.ClearUrl(); else LlmSettings.Url = url;
         SaveCloudKey("openrouter", _openRouterInput.text.Trim());
@@ -401,7 +430,7 @@ public partial class AgentUIManager
         string greeting = AppSettings.Configured
             ? "Привет! Я готов помочь. Говорите или откройте интерфейс, чтобы написать."
             : "Привет! Я Барабашка. Можно сразу говорить, а чтобы настроить меня под себя, нажмите «Настрой меня».";
-        AddMessage("Barabashka", greeting, false);
+        AddMessage("Barabashka", greeting, false, true, true, ChatKind.Dialog);
         SetStatus("Готов к работе");
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -26,7 +27,6 @@ public partial class AgentUIManager : MonoBehaviour
     private CanvasGroup _chatGroup, _inputGroup, _voiceGroup;
     private Text _subtitleText;
     private GameObject _modeIconMenu, _modeIconClose;
-    private Button _micSmall;
     private string _subtitleUser = string.Empty;
     private string _subtitleAgent = string.Empty;
 
@@ -37,13 +37,13 @@ public partial class AgentUIManager : MonoBehaviour
     private void OnEnable()
     {
         Barabashka.Contracts.AgentActivityBus.Changed += OnActivityChanged;
-        Barabashka.Contracts.AgentVoiceControl.MutedChanged += OnMutedChanged;
+        ChatKinds.Changed += OnKindChanged;
     }
 
     private void OnDisable()
     {
         Barabashka.Contracts.AgentActivityBus.Changed -= OnActivityChanged;
-        Barabashka.Contracts.AgentVoiceControl.MutedChanged -= OnMutedChanged;
+        ChatKinds.Changed -= OnKindChanged;
     }
 
     // Состояние агента показываем только в строке статуса: в чат оно не попадает.
@@ -70,7 +70,7 @@ public partial class AgentUIManager : MonoBehaviour
         _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         BuildInterface();
         ApplyLayout();
-        UpdateMicVisuals();
+        RestoreChat();
         // Приветствие и «Готов к работе» появятся после загрузки голосовой модели (ShowReady), пока - только строка о загрузке.
         SetStatus("Подготовка голосового ввода…");
     }
@@ -141,10 +141,7 @@ public partial class AgentUIManager : MonoBehaviour
         _inputGroup = CreateGroup("InputGroup", canvasObject.transform);
         _voiceGroup = CreateGroup("VoiceGroup", canvasObject.transform);
 
-        Text chatLabel = CreateText("ConversationLabel", _chatGroup.transform, "ДИАЛОГ", 17,
-            new Color(0.43f, 0.66f, 0.84f), TextAnchor.MiddleLeft);
-        Place(chatLabel.rectTransform, new Vector2(0.06f, 0.785f), new Vector2(0.5f, 0.815f),
-            Vector2.zero, Vector2.zero);
+        BuildChatTabs(_chatGroup.transform);
 
         Image chatPanel = CreateImage("ConversationPanel", _chatGroup.transform,
             new Color(0.055f, 0.075f, 0.115f, 0.96f));
@@ -189,6 +186,7 @@ public partial class AgentUIManager : MonoBehaviour
         ContentSizeFitter fitter = content.AddComponent<ContentSizeFitter>();
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         _scrollRect.content = _messageContent;
+        BuildUndoToast(_chatGroup.transform);
 
         Image inputPanel = CreateImage("InputPanel", _inputGroup.transform,
             new Color(0.075f, 0.105f, 0.155f, 1f));
@@ -292,7 +290,12 @@ public partial class AgentUIManager : MonoBehaviour
         BuildSettingsUi(canvasObject.transform);
     }
 
-    public void AddUserMessage(string text) { AddMessage("Вы", text, true); }
+    public void AddUserMessage(string text)
+    {
+        _turn.Clear();
+        ChatKinds.Begin(ChatKinds.ForText(text));
+        AddMessage("Вы", text, true);
+    }
     public void AddAgentMessage(string text) { AddMessage("BARABASHKA", text, false); }
     public void UpdateResponseText(string text) { AddAgentMessage(text); }
 
@@ -303,9 +306,10 @@ public partial class AgentUIManager : MonoBehaviour
     }
 
     /// <summary>Служебное сообщение в историю чата: в субтитры голосового режима оно не попадает (там уже есть статус).</summary>
-    public void AddSystemMessage(string text) { AddMessage("BARABASHKA", text, false, false); }
+    public void AddSystemMessage(string text) { AddMessage("BARABASHKA", text, false, false, true, ChatKind.System); }
 
-    private void AddMessage(string speaker, string message, bool isUser, bool updateSubtitles = true)
+    private void AddMessage(string speaker, string message, bool isUser, bool updateSubtitles = true,
+        bool transient = false, ChatKind? kind = null)
     {
         if (_messageContent == null) return;
         string safeMessage = string.IsNullOrWhiteSpace(message) ? "…" : message.Trim();
@@ -325,48 +329,21 @@ public partial class AgentUIManager : MonoBehaviour
             RefreshSubtitles();
         }
 
-        GameObject card = new GameObject(isUser ? "UserMessage" : "AgentMessage");
-        card.transform.SetParent(_messageContent, false);
-        Image cardImage = card.AddComponent<Image>();
-        SetRoundedSprite(cardImage);
-        cardImage.color = isUser
-            ? new Color(0.10f, 0.23f, 0.36f, 1f)
-            : new Color(0.085f, 0.115f, 0.17f, 1f);
-        VerticalLayoutGroup cardLayout = card.AddComponent<VerticalLayoutGroup>();
-        cardLayout.padding = new RectOffset(14, 14, 10, 10);
-        cardLayout.spacing = 6f;
-        cardLayout.childControlWidth = true;
-        cardLayout.childControlHeight = true;
-        cardLayout.childForceExpandHeight = false;
-        cardLayout.childForceExpandWidth = false;
-
-        Text speakerText = CreateText("Speaker", card.transform, speaker, 16,
-            isUser ? new Color(0.55f, 0.78f, 1f) : new Color(0.35f, 0.78f, 0.95f),
-            TextAnchor.MiddleLeft);
-        LayoutElement speakerLayout = speakerText.gameObject.AddComponent<LayoutElement>();
-        speakerLayout.preferredHeight = 24f;
-        speakerLayout.flexibleWidth = 1f;
-
-        Text messageText = CreateText("MessageText", card.transform, safeMessage, 23,
-            new Color(0.89f, 0.93f, 0.98f), TextAnchor.UpperLeft);
-        messageText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        messageText.verticalOverflow = VerticalWrapMode.Overflow;
-        messageText.supportRichText = false;
-        LayoutElement messageLayout = messageText.gameObject.AddComponent<LayoutElement>();
-        messageLayout.minHeight = 30f;
-        messageLayout.flexibleWidth = 1f;
-
-        Button copyButton = CreateButton("CopyMessage", card.transform, "Копировать",
-            new Color(0.13f, 0.19f, 0.27f, 1f), 14);
-        LayoutElement copyLayout = copyButton.gameObject.AddComponent<LayoutElement>();
-        copyLayout.preferredHeight = 34f;
-        copyLayout.preferredWidth = 150f;
-        copyLayout.flexibleWidth = 0f;
-        copyButton.onClick.AddListener(() =>
+        var rec = new ChatRecord
         {
-            GUIUtility.systemCopyBuffer = safeMessage;
-            SetStatus("Сообщение скопировано");
-        });
+            Id = _nextId++,
+            Kind = kind.HasValue ? kind.Value : ChatKinds.Current,
+            IsUser = isUser,
+            Speaker = speaker,
+            Text = safeMessage,
+            Ticks = DateTime.UtcNow.Ticks,
+            Transient = transient
+        };
+        _records.Add(rec);
+        if (!kind.HasValue) _turn.Add(rec);
+        BuildCard(rec);
+        if (!IsVisible(rec)) { _unread[(int)rec.Kind] = true; RefreshTabs(); }
+        if (!transient) Persist();
 
         Debug.Log("[Chat] " + speaker + ": " + safeMessage.Length + " симв., строк: " + (safeMessage.Split('\n').Length));
         RebuildChatLayout();
@@ -520,37 +497,6 @@ public partial class AgentUIManager : MonoBehaviour
         }
         AvatarVisualizer avatar = GetComponent<AvatarVisualizer>();
         if (avatar != null) avatar.TriggerGreet();
-    }
-
-    private void ToggleMute()
-    {
-        Barabashka.Contracts.AgentVoiceControl.SetMuted(!Barabashka.Contracts.AgentVoiceControl.Muted);
-    }
-
-    private void OnMutedChanged(bool muted)
-    {
-        UpdateMicVisuals();
-    }
-
-    private void UpdateMicVisuals()
-    {
-        bool muted = Barabashka.Contracts.AgentVoiceControl.Muted;
-        Color off = new Color(0.45f, 0.15f, 0.20f, 1f);
-        SetMicButton(_micSmall, muted ? "OFF" : "MIC", muted ? off : new Color(0.12f, 0.18f, 0.27f, 1f));
-    }
-
-    private static void SetMicButton(Button button, string label, Color color)
-    {
-        if (button == null) return;
-        Image image = button.targetGraphic as Image;
-        if (image != null) image.color = color;
-        ColorBlock colors = button.colors;
-        colors.normalColor = color;
-        colors.highlightedColor = Color.Lerp(color, Color.white, 0.12f);
-        colors.pressedColor = Color.Lerp(color, Color.black, 0.18f);
-        button.colors = colors;
-        Text text = button.GetComponentInChildren<Text>();
-        if (text != null) text.text = label;
     }
 
     private static string ShortText(string text, int maxLength)

@@ -148,9 +148,17 @@ public class AgentManager : MonoBehaviour
         // Управление режимом голосом или текстом: ответ только в чат, без озвучки.
         if (_router != null && !_router.HasPendingConfirmation && _uiManager != null)
         {
+            ChatCommand chatCommand = ChatCommands.Parse(message);
+            if (chatCommand.Cmd != ChatCmd.None)
+            {
+                HandleChatCommand(chatCommand, message);
+                AgentActivityBus.PublishResting();
+                return;
+            }
             if (WantsSettings(message))
             {
                 _uiManager.AddUserMessage(message);
+                ChatKinds.Set(ChatKind.System);
                 _uiManager.ShowSettings();
                 AgentActivityBus.PublishResting();
                 return;
@@ -159,6 +167,7 @@ public class AgentManager : MonoBehaviour
             if (speakToggle != 0)
             {
                 _uiManager.AddUserMessage(message);
+                ChatKinds.Set(ChatKind.System);
                 AppSettings.SpeakReplies = speakToggle > 0;
                 _uiManager.AddAgentMessage(speakToggle > 0
                     ? "Озвучка ответов включена."
@@ -169,6 +178,7 @@ public class AgentManager : MonoBehaviour
             if (WantsInterface(message))
             {
                 _uiManager.AddUserMessage(message);
+                ChatKinds.Set(ChatKind.System);
                 _uiManager.SetMode(true);
                 _uiManager.AddAgentMessage("Открываю интерфейс, можно писать.");
                 AgentActivityBus.PublishResting();
@@ -177,6 +187,7 @@ public class AgentManager : MonoBehaviour
             if (WantsAvatarMode(message))
             {
                 _uiManager.AddUserMessage(message);
+                ChatKinds.Set(ChatKind.System);
                 _uiManager.AddAgentMessage("Возвращаюсь к режиму аватара.");
                 _uiManager.SetMode(false);
                 AgentActivityBus.PublishResting();
@@ -248,6 +259,30 @@ public class AgentManager : MonoBehaviour
         {
             if (requestVersion == _requestVersion) _requestRunning = false;
         }
+    }
+
+    // Команды чата: разделы, удаление, возврат, хранение. Правки без разговора идут в строку статуса, чтобы чат не засорять.
+    private void HandleChatCommand(ChatCommand cmd, string message)
+    {
+        bool confirm = cmd.Cmd == ChatCmd.EmptyTrash || (cmd.Cmd == ChatCmd.DeleteSection && !AppSettings.ChatTrash);
+        if (confirm)
+        {
+            string question = _uiManager.DescribeChatCommand(cmd);
+            _uiManager.AddUserMessage(message);
+            ChatKinds.Set(ChatKind.System);
+            ActionGate.Ask(() => System.Threading.Tasks.Task.FromResult(_uiManager.RunChatCommand(cmd)), null, false);
+            _uiManager.AddAgentMessage(question + " Это нельзя будет вернуть." + ActionGate.Suffix);
+            return;
+        }
+
+        if (cmd.Talks)
+        {
+            _uiManager.AddUserMessage(message);
+            ChatKinds.Set(ChatKind.System);
+            _uiManager.AddAgentMessage(_uiManager.RunChatCommand(cmd));
+            return;
+        }
+        _uiManager.SetStatus(_uiManager.RunChatCommand(cmd));
     }
 
     // Ключи API из команд «/llm добавить …» и «/llm ключ …» не показываем в чате и не пишем в журнал.

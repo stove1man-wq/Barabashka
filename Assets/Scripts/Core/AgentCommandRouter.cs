@@ -31,6 +31,7 @@ public class AgentCommandRouter : MonoBehaviour
         if (brainResponse.StartsWith("COMMAND:", StringComparison.Ordinal))
         {
             string command = brainResponse.Substring("COMMAND:".Length);
+            ChatKinds.Set(ChatKinds.ForCommand(command));
             if (command == "TIME")
             {
                 ShowResponse("Текущее точное время: " + AgentToolset.GetCurrentSystemTime());
@@ -282,7 +283,7 @@ public class AgentCommandRouter : MonoBehaviour
         Debug.Log("[Router] Напоминание: " + text);
 
         if (_uiManager == null) _uiManager = GetComponent<AgentUIManager>();
-        if (_uiManager != null) _uiManager.UpdateResponseText(text);
+        if (_uiManager != null) _uiManager.AddAgentMessageAs(ChatKind.Notes, text);
         PlayAnimation("Greet");
 
         if (!speak) return;
