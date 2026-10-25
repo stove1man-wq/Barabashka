@@ -35,7 +35,8 @@ public static class AgentToolCatalog
         sb.AppendLine("- task_rename: переименовать задачу. {\"tool\":\"task_rename\",\"number\":\"2\",\"title\":\"новое название\"}");
         sb.AppendLine("- open_url: открыть сайт в браузере. {\"tool\":\"open_url\",\"url\":\"https://...\"}");
         foreach (IAgentTool registered in AgentToolRegistry.Default.Tools)
-            sb.AppendLine("- " + registered.Name + ": " + registered.Description);
+            if (CapabilityRegistry.IsOffered(registered.Name))
+                sb.AppendLine("- " + registered.Name + ": " + registered.Description);
         sb.AppendLine("Номера задач - это номера из списка, который показывает task_list. Если пользователь не назвал номер, верни reply с уточняющим вопросом.");
         sb.AppendLine("Каждая реплика пользователя - отдельная просьба: не повторяй инструменты из прошлых реплик, если об этом не просят снова.");
         sb.AppendLine("Если пользователь отказывается («не надо», «не открывай», «отмена», «ничего не делай»), верни {\"reply\":\"Хорошо.\"} без tool.");
@@ -75,7 +76,8 @@ public static class AgentToolCatalog
         sb.AppendLine("- task_rename: {\"tool\":\"task_rename\",\"number\":\"2\",\"title\":\"новое название\"}");
         sb.AppendLine("- open_url: {\"tool\":\"open_url\",\"url\":\"https://...\"}");
         foreach (IAgentTool registered in AgentToolRegistry.Default.Tools)
-            sb.AppendLine("- " + registered.Name + ": " + registered.Description);
+            if (CapabilityRegistry.IsOffered(registered.Name))
+                sb.AppendLine("- " + registered.Name + ": " + registered.Description);
         sb.AppendLine("Каждая реплика - отдельная просьба. При отказе («не надо», «отмена») верни {\"reply\":\"Хорошо.\"}. Не выдумывай факты, если не знаешь - так и скажи.");
         sb.Append("Сегодня " + now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ", " + WeekDays[(int)now.DayOfWeek] + ".");
         return sb.ToString();

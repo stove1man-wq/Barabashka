@@ -119,6 +119,9 @@ public class IsolatedBrain : IAgentBrain
         if (lower.Contains("привет") || lower.Contains("здравствуй"))
             return Task.FromResult("Приветствую! Я ваш независимый ИИ-агент. Рад помочь!");
 
+        if (ContainsAny(lower, "что ты умеешь", "что умеешь", "что ты можешь", "твои возможности", "чем ты можешь помочь", "чем можешь помочь"))
+            return Task.FromResult(CapabilityRegistry.Describe());
+
         if (lower.Contains("время") || lower.Contains("час"))
             return Task.FromResult("COMMAND:TIME");
 

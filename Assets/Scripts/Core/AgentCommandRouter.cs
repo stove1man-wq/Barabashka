@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Barabashka.Contracts;
 using UnityEngine;
@@ -166,6 +167,7 @@ public class AgentCommandRouter : MonoBehaviour
     // Ответ на вопрос перед звонком/сообщением (режим «С подтверждением»).
     private bool HandleActionGate(string userText)
     {
+        string label = ActionGate.PendingLabel;
         Func<System.Threading.Tasks.Task<string>> action = ActionGate.Take();
         if (action == null) return false;
 
@@ -181,7 +183,12 @@ public class AgentCommandRouter : MonoBehaviour
                 w == "делай" || w == "сделай" || w == "ок" || w == "окей" || w == "верно" || w == "звони" || w == "отправляй") yes = true;
         }
 
-        if (no) { ShowResponse("Хорошо, не делаю."); return true; }
+        if (no)
+        {
+            if (label != null) ActionLog.Add(label, "вы отказались", true);
+            ShowResponse("Хорошо, не делаю.");
+            return true;
+        }
         if (!yes) return false;
         RunConfirmedAction(action);
         return true;
@@ -208,17 +215,62 @@ public class AgentCommandRouter : MonoBehaviour
             return;
         }
 
+        // Реестр возможностей: честно говорим, почему нельзя (не телефон, нет сети, выключено), вместо молчаливой ошибки.
+        CapabilityStatus status = CapabilityRegistry.Check(tool.Name);
+        if (!status.CanRun)
+        {
+            CapabilityInfo info = CapabilityRegistry.Get(tool.Name);
+            ShowResponse("Не могу: " + (info != null ? info.Title.ToLowerInvariant() : tool.Name) + " - " + status.Reason + ".");
+            return;
+        }
+
+        var args = AgentToolRegistry.ParseQuery(parts.Length > 1 ? parts[1] : string.Empty);
+
+        // Политика риска: выполнить, спросить «да/нет» или отказать (запрет человека, необратимые действия).
+        CapabilityInfo capability = CapabilityRegistry.Get(tool.Name);
+        PolicyDecision decision = ActionPolicy.Decide(capability);
+        string title = capability != null ? capability.Title : tool.Name;
+        if (decision.Kind == PolicyKind.Deny)
+        {
+            ActionLog.Add(tool.Name, "запрещено вами", false);
+            ShowResponse("Не делаю: " + title.ToLowerInvariant() + " - " + decision.Reason + ".");
+            return;
+        }
+        if (decision.Kind == PolicyKind.Confirm)
+        {
+            ActionGate.Ask(() => ExecuteToolAsync(tool, args, "подтверждено и выполнено"), tool.Name, false);
+            ShowResponse("Подтвердите: " + title.ToLowerInvariant() + Details(args) + "?" + ActionGate.Suffix);
+            return;
+        }
+        ShowResponse(await ExecuteToolAsync(tool, args, "выполнено"));
+    }
+
+    // Выполняет инструмент, записывает результат в журнал действий и возвращает текст для человека.
+    private static async System.Threading.Tasks.Task<string> ExecuteToolAsync(IAgentTool tool, IDictionary<string, string> args, string how)
+    {
         try
         {
-            var args = AgentToolRegistry.ParseQuery(parts.Length > 1 ? parts[1] : string.Empty);
             ToolResult result = await tool.ExecuteAsync(args, CancellationToken.None);
-            ShowResponse(result.Success ? result.Output : result.Error);
+            ActionLog.Add(tool.Name, how, result.Success);
+            return result.Success ? result.Output : result.Error;
         }
         catch (Exception ex)
         {
             Debug.LogException(ex);
-            ShowResponse("Не получилось выполнить действие. Подробности записаны в журнале Unity.");
+            ActionLog.Add(tool.Name, how, false);
+            return "Не получилось выполнить действие. Подробности записаны в журнале Unity.";
         }
+    }
+
+    // Короткое описание аргументов для вопроса «Подтвердите: удалить заметку (1,2)?».
+    private static string Details(IDictionary<string, string> args)
+    {
+        var values = new List<string>();
+        foreach (KeyValuePair<string, string> pair in args)
+            if (!string.IsNullOrWhiteSpace(pair.Value)) values.Add(pair.Value.Trim());
+        if (values.Count == 0) return string.Empty;
+        string joined = string.Join(", ", values.ToArray());
+        return " (" + (joined.Length > 60 ? joined.Substring(0, 60) + "…" : joined) + ")";
     }
 
     /// <summary>Сообщение «по инициативе агента» (напоминание, таймер): показывается всегда, озвучивается по желанию.</summary>

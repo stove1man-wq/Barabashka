@@ -54,6 +54,41 @@ public sealed class HybridBrain : IBrain
             return new AgentResponse { Text = answer, LanguageCode = input != null ? input.LanguageCode : null };
         }
 
+        if (text.StartsWith("/возможности", StringComparison.OrdinalIgnoreCase) || text.StartsWith("/capabilities", StringComparison.OrdinalIgnoreCase))
+        {
+            string[] p = text.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
+            string verb = p.Length > 1 ? p[1].ToLowerInvariant() : string.Empty;
+            string rest = p.Length > 2 ? p[2] : string.Empty;
+            string answer;
+            if (verb.StartsWith("выкл", StringComparison.Ordinal)) answer = CapabilityRegistry.Toggle(rest, false);
+            else if (verb.StartsWith("вкл", StringComparison.Ordinal)) answer = CapabilityRegistry.Toggle(rest, true);
+            else answer = CapabilityRegistry.Describe();
+            return new AgentResponse { Text = answer, LanguageCode = input != null ? input.LanguageCode : null };
+        }
+
+        if (text.StartsWith("/телеграм", StringComparison.OrdinalIgnoreCase) || text.StartsWith("/telegram", StringComparison.OrdinalIgnoreCase))
+        {
+            int sp = text.IndexOf(' ');
+            string tgAnswer = await TelegramCommands.HandleAsync(sp < 0 ? string.Empty : text.Substring(sp + 1));
+            return new AgentResponse { Text = tgAnswer, LanguageCode = input != null ? input.LanguageCode : null };
+        }
+
+        if (text.StartsWith("/подключения", StringComparison.OrdinalIgnoreCase) || text.StartsWith("/connections", StringComparison.OrdinalIgnoreCase))
+            return new AgentResponse { Text = ConnectorRegistry.Describe(), LanguageCode = input != null ? input.LanguageCode : null };
+
+        if (text.StartsWith("/политика", StringComparison.OrdinalIgnoreCase) || text.StartsWith("/policy", StringComparison.OrdinalIgnoreCase))
+        {
+            int space = text.IndexOf(' ');
+            return new AgentResponse { Text = ActionPolicy.Handle(space < 0 ? string.Empty : text.Substring(space + 1)), LanguageCode = input != null ? input.LanguageCode : null };
+        }
+
+        if (text.StartsWith("/журнал", StringComparison.OrdinalIgnoreCase) || text.StartsWith("/log", StringComparison.OrdinalIgnoreCase))
+        {
+            bool clearLog = text.IndexOf("очист", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (clearLog) ActionLog.Clear();
+            return new AgentResponse { Text = clearLog ? "Журнал действий очищен." : ActionLog.Describe(20), LanguageCode = input != null ? input.LanguageCode : null };
+        }
+
         if (text.StartsWith("/непонятое", StringComparison.OrdinalIgnoreCase))
         {
             bool clear = text.IndexOf("очист", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -198,6 +233,7 @@ public sealed class HybridBrain : IBrain
         { "open_app", new[] { "откр", "запус", "включ", "зайд", "приложен" } },
         { "alarm_set", new[] { "будильн", "разбуд" } },
         { "alarm_show", new[] { "будильн" } },
+        { "telegram_read", new[] { "телеграм", "telegram", "переписк", "сообщен", "непрочит", "нов" } },
         { "call", new[] { "позвон", "звони", "набер", "вызов", "дозвон" } },
         { "message", new[] { "напиш", "отправ", "смс", "сообщен", "телеграм", "ватсап", "вацап", "вотсап", "пошл", "скин" } }
     };

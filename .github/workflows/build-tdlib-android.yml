@@ -1,0 +1,36 @@
+name: Build TDLib for Android
+
+# Собирает официальную библиотеку Telegram (TDLib, JSON-интерфейс) для Android arm64 по официальным скриптам из репозитория tdlib/td.
+# Запуск вручную: вкладка Actions -> Build TDLib for Android -> Run workflow. Результат - артефакт libtdjson-arm64-v8a.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y gperf cmake ninja-build php-cli default-jdk-headless perl make unzip
+
+      - name: Fetch TDLib (pinned commit)
+        run: |
+          git clone https://github.com/tdlib/td.git
+          cd td
+          git checkout ea3f69ce11aef458bfbb09869b809ede4447486f
+
+      - name: Build
+        working-directory: td/example/android
+        run: |
+          ./fetch-sdk.sh SDK 23.2.8568313
+          ./build-openssl.sh SDK 23.2.8568313 third-party/openssl OpenSSL_1_1_1w
+          ./build-tdlib.sh SDK 23.2.8568313 third-party/openssl c++_static JSON 24 "arm64-v8a"
+
+      - name: Check result
+        run: ls -l td/example/android/tdlib/libs/arm64-v8a/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libtdjson-arm64-v8a
+          path: td/example/android/tdlib/libs/arm64-v8a/libtdjson.so
+          if-no-files-found: error

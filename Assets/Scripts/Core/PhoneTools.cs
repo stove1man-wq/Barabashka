@@ -122,7 +122,7 @@ public sealed class AlarmSetTool : IAgentTool
             return Task.FromResult(ToolResult.Fail("Не понял время будильника. Скажите, например: «разбуди меня в 7 утра»."));
 
         // Вручную: открываем системные часы с готовым будильником (остаётся нажать «сохранить»); иначе ставим сразу.
-        bool showUi = AppSettings.Actions == ActionLevel.Manual;
+        bool showUi = ActionPolicy.LevelFor("alarm_set") == ActionLevel.Manual;
         return Task.FromResult(ToolResult.Ok(PhoneActions.Alarm(due, showUi)));
     }
 }

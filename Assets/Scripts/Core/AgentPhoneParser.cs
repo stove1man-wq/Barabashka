@@ -152,7 +152,7 @@ public static class AgentPhoneParser
                 word.StartsWith("будильн", StringComparison.Ordinal) || word.StartsWith("задач", StringComparison.Ordinal) ||
                 word.StartsWith("заметк", StringComparison.Ordinal))
                 return false;
-        return TryMessage(w, out command) || TryDial(spoken, out command);
+        return TryTelegramRead(w, out command) || TryMessage(w, out command) || TryDial(spoken, out command);
     }
 
     // «Позвони маме», «набери номер плюс семь …», «вызови Ивана Петрова».
@@ -212,6 +212,38 @@ public static class AgentPhoneParser
         if (word.StartsWith("смс", StringComparison.Ordinal) || word.StartsWith("смск", StringComparison.Ordinal) ||
             word.StartsWith("эсэмэс", StringComparison.Ordinal) || word.StartsWith("sms", StringComparison.Ordinal)) return "sms";
         return null;
+    }
+
+    private static readonly HashSet<string> TelegramReadFiller = new HashSet<string>
+    {
+        "прочитай", "прочти", "покажи", "проверь", "есть", "что", "какие", "какое", "новые", "новое", "нового", "последние", "мне", "пожалуйста",
+        "сообщения", "сообщение", "переписку", "переписка", "в", "во", "от", "с", "у", "чате", "чат", "пришло", "пришли", "написала", "написал",
+        "непрочитанные", "непрочитанное", "ли", "там", "новых"
+    };
+
+    // «Что нового в телеграме», «прочитай сообщения от Маши в телеграм», «что написала мама в телеграм».
+    private static bool TryTelegramRead(string[] w, out string command)
+    {
+        command = null;
+        bool telegram = false;
+        foreach (string word in w) if (ViaOf(word) == "telegram") telegram = true;
+        if (!telegram) return false;
+
+        bool readVerb = false;
+        for (int i = 0; i < w.Length && i < 3; i++)
+            if (w[i] == "прочитай" || w[i] == "прочти" || w[i] == "покажи" || w[i] == "проверь" || w[i] == "есть" || w[i] == "что" || w[i] == "какие" || w[i] == "нет")
+                readVerb = true;
+        if (!readVerb) return false;
+        if (!HasStem(w, "сообщен", "перепис", "нов", "непрочит", "пришл", "написал", "чат")) return false;
+
+        var name = new List<string>();
+        foreach (string word in w)
+        {
+            if (ViaOf(word) != null || TelegramReadFiller.Contains(word)) continue;
+            name.Add(word);
+        }
+        command = Tool("telegram_read", "rest", string.Join(" ", name.ToArray()));
+        return true;
     }
 
     // «Напиши маме в телеграм, что я задерживаюсь», «отправь смс маме привет», «отправь Ивану сообщение в ватсап …».

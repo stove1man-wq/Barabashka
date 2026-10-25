@@ -60,6 +60,7 @@ public sealed class AgentToolRegistry : IToolRegistry
         registry.Register(new AlarmShowTool());
         registry.Register(new CallTool());
         registry.Register(new MessageTool());
+        registry.Register(new TelegramReadTool());
         return registry;
     }
 

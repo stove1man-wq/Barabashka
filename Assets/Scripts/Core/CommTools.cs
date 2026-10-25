@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Barabashka.Contracts;
 
-// Звонки и сообщения. Поведение зависит от настройки «Действия агента» (AppSettings.Actions):
+// Звонки и сообщения. Поведение зависит от настройки «Действия агента» (режим действий):
 // вручную - открываем готовый набор или окно сообщения; с подтверждением - спрашиваем «да/нет»; полный цикл - делаем сразу.
 
 /// <summary>Кому адресовано действие: номер, имя для показа и слова фразы, которые остались после имени.</summary>
@@ -115,12 +115,12 @@ public sealed class CallTool : IAgentTool
 
         string number = who.Number;
         string display = who.Display;
-        switch (AppSettings.Actions)
+        switch (ActionPolicy.LevelFor("call"))
         {
             case ActionLevel.Auto:
                 return ToolResult.Ok(await PhoneComms.CallNowAsync(number, display));
             case ActionLevel.Confirm:
-                ActionGate.Ask(() => PhoneComms.CallNowAsync(number, display));
+                ActionGate.Ask(() => PhoneComms.CallNowAsync(number, display), "call");
                 return ToolResult.Ok("Позвонить: " + display + "?" + ActionGate.Suffix);
             default:
                 return ToolResult.Ok(PhoneComms.OpenDialer(number, display));
@@ -135,10 +135,20 @@ public sealed class MessageTool : IAgentTool
 
     public async Task<ToolResult> ExecuteAsync(IDictionary<string, string> args, CancellationToken ct)
     {
-        Recipient who = await Recipient.ResolveAsync(args);
-        if (who.Error != null) return ToolResult.Fail(who.Error);
-
         string via = ToolArgs.Get(args, "via").ToLowerInvariant();
+
+        // Telegram подключён к агенту (TDLib): пишем прямо из приложения по режиму действий. Иначе - прежний путь: открыть чат с готовым текстом.
+        string note = string.Empty;
+        if (via == "telegram" && TelegramClient.HasCredentials && ActionPolicy.LevelFor("message") != ActionLevel.Manual)
+        {
+            TelegramSend.Attempt attempt = await TelegramSend.TryAsync(args, ActionPolicy.LevelFor("message"));
+            if (attempt.Result != null) return attempt.Result;
+            note = attempt.Note;
+        }
+
+        Recipient who = await Recipient.ResolveAsync(args);
+        if (who.Error != null) return ToolResult.Fail(note + who.Error);
+
         string text = ToolArgs.Get(args, "text");
         if (text.Length == 0) text = who.Rest.Trim();
         if (text.Length > 0) text = char.ToUpperInvariant(text[0]) + text.Substring(1);
@@ -148,14 +158,15 @@ public sealed class MessageTool : IAgentTool
 
         // Telegram и WhatsApp: в любом режиме только открываем чат с готовым текстом (отправку на Android за человека сделать нельзя).
         if (via == "telegram" || via == "whatsapp")
-            return ToolResult.Ok(PhoneComms.OpenMessengerChat(via, number, text, display));
+            return ToolResult.Ok(note + PhoneComms.OpenMessengerChat(via, number, text, display));
 
-        if (text.Length == 0 || AppSettings.Actions == ActionLevel.Manual)
+        ActionLevel level = ActionPolicy.LevelFor("message");
+        if (text.Length == 0 || level == ActionLevel.Manual)
             return ToolResult.Ok(PhoneComms.OpenSmsComposer(number, text, display));
 
-        if (AppSettings.Actions == ActionLevel.Confirm)
+        if (level == ActionLevel.Confirm)
         {
-            ActionGate.Ask(() => PhoneComms.SendSmsNowAsync(number, text, display));
+            ActionGate.Ask(() => PhoneComms.SendSmsNowAsync(number, text, display), "message");
             return ToolResult.Ok("Отправить SMS для " + display + ": «" + text + "»?" + ActionGate.Suffix);
         }
         return ToolResult.Ok(await PhoneComms.SendSmsNowAsync(number, text, display));

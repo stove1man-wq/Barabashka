@@ -68,6 +68,11 @@ public static class LlmProfiles
         return !string.IsNullOrEmpty(name) && NamePattern.IsMatch(name);
     }
 
+    private static string SecretName(string profile)
+    {
+        return "llm." + (profile ?? string.Empty).ToLowerInvariant();
+    }
+
     public static List<LlmProfile> Extra()
     {
         try
@@ -76,7 +81,18 @@ public static class LlmProfiles
             if (!string.IsNullOrEmpty(json))
             {
                 Store store = JsonUtility.FromJson<Store>(json);
-                if (store != null && store.items != null) return store.items;
+                if (store != null && store.items != null)
+                {
+                    bool migrate = false;
+                    foreach (LlmProfile p in store.items)
+                    {
+                        // Ключи старых версий лежали в открытом виде: переносим в защищённое хранилище.
+                        if (!string.IsNullOrEmpty(p.apiKey)) migrate = true;
+                        else p.apiKey = SecretStore.Get(SecretName(p.name));
+                    }
+                    if (migrate) Save(store.items);
+                    return store.items;
+                }
             }
         }
         catch (Exception ex)
@@ -86,9 +102,29 @@ public static class LlmProfiles
         return new List<LlmProfile>();
     }
 
+    // Ключи уходят в SecretStore, а в списке профилей остаются пустыми. Если защищённое хранение не сработало,
+    // ключ остаётся в списке (модели продолжат работать), об этом пишется предупреждение.
     private static void Save(List<LlmProfile> items)
     {
-        PlayerPrefs.SetString(StoreKey, JsonUtility.ToJson(new Store { items = items }));
+        var stored = new List<LlmProfile>();
+        foreach (LlmProfile p in items)
+        {
+            var copy = new LlmProfile { name = p.name, kind = p.kind, url = p.url, model = p.model, apiKey = string.Empty };
+            if (!string.IsNullOrEmpty(p.apiKey))
+            {
+                if (!SecretStore.Set(SecretName(p.name), p.apiKey))
+                {
+                    Debug.LogWarning("[LLM] Не удалось защитить ключ профиля «" + p.name + "», он сохранён без шифрования.");
+                    copy.apiKey = p.apiKey;
+                }
+            }
+            else
+            {
+                SecretStore.Remove(SecretName(p.name));
+            }
+            stored.Add(copy);
+        }
+        PlayerPrefs.SetString(StoreKey, JsonUtility.ToJson(new Store { items = stored }));
         PlayerPrefs.Save();
     }
 
@@ -132,7 +168,11 @@ public static class LlmProfiles
     {
         List<LlmProfile> items = Extra();
         int removed = items.RemoveAll(p => string.Equals(p.name, name, StringComparison.OrdinalIgnoreCase));
-        if (removed > 0) Save(items);
+        if (removed > 0)
+        {
+            SecretStore.Remove(SecretName(name));
+            Save(items);
+        }
         return removed > 0;
     }
 

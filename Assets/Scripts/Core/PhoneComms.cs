@@ -38,6 +38,16 @@ public static class PhoneComms
         return d;
     }
 
+    /// <summary>Выдано ли разрешение (на ПК считается выданным).</summary>
+    public static bool HasPermission(string permission)
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        return Permission.HasUserAuthorizedPermission(permission);
+#else
+        return true;
+#endif
+    }
+
     public static async Task<bool> EnsurePermissionAsync(string permission)
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
