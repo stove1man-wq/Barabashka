@@ -10,8 +10,14 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
+      # sdkmanager из новых command-line tools требует Java 17 (на runner по умолчанию Java 11).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Tools
-        run: sudo apt-get update && sudo apt-get install -y gperf cmake ninja-build php-cli default-jdk-headless perl make unzip
+        run: sudo apt-get update && sudo apt-get install -y gperf cmake ninja-build php-cli perl make unzip
 
       - name: Fetch TDLib (pinned commit)
         run: |
