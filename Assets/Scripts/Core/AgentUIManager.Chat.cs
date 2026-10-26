@@ -51,9 +51,29 @@ public partial class AgentUIManager
             Place(button.GetComponent<RectTransform>(), new Vector2(x0, 0.783f), new Vector2(x1, 0.818f),
                 new Vector2(3f, 0f), new Vector2(-3f, 0f));
             button.onClick.AddListener(() => SelectTab(index));
+            AddTabIcon(button, i == 0 ? "all" : ChatKinds.All[i - 1].ToString().ToLowerInvariant());
             _tabButtons[i] = button;
         }
         RefreshTabs();
+    }
+
+    // Вместо надписи на кнопке раздела - значок; точка в углу значит «есть непрочитанное».
+    private void AddTabIcon(Button button, string iconId)
+    {
+        Transform label = button.transform.Find("Label");
+        if (label != null) label.gameObject.SetActive(false);
+
+        Image icon = CreateImage("Icon", button.transform, Color.white);
+        icon.sprite = ChatIcons.Get(iconId);
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
+        Stretch(icon.rectTransform, Vector2.zero, Vector2.one, new Vector2(5f, 4f), new Vector2(-5f, -4f));
+
+        Image dot = CreateImage("Dot", button.transform, new Color(1f, 0.30f, 0.25f, 1f));
+        SetRoundedSprite(dot);
+        dot.raycastTarget = false;
+        Place(dot.rectTransform, new Vector2(0.70f, 0.58f), new Vector2(0.96f, 0.94f), Vector2.zero, Vector2.zero);
+        dot.gameObject.SetActive(false);
     }
 
     // Строка «Сообщение удалено - Вернуть» поверх нижней части чата.
@@ -84,20 +104,23 @@ public partial class AgentUIManager
             if (button == null) continue;
             bool selected = i == 0 ? _filterAll : (!_filterAll && _filterKind == ChatKinds.All[i - 1]);
             Color color;
-            string title;
+            bool hasUnread = false;
             if (i == 0)
             {
                 color = selected ? new Color(0.45f, 0.55f, 0.68f, 1f) : new Color(0.20f, 0.25f, 0.32f, 1f);
-                title = "Все";
             }
             else
             {
                 ChatKind kind = ChatKinds.All[i - 1];
                 color = selected ? ChatKinds.Tab(kind) : Color.Lerp(ChatKinds.Bubble(kind, true), ChatKinds.Tab(kind), 0.35f);
-                title = ChatKinds.Title(kind) + (_unread[i - 1] && !selected ? " •" : string.Empty);
+                hasUnread = _unread[i - 1] && !selected;
             }
             SetButtonColor(button, color);
-            button.transform.Find("Label").GetComponent<Text>().text = title;
+
+            Transform icon = button.transform.Find("Icon");
+            if (icon != null) icon.GetComponent<Image>().color = selected ? Color.white : new Color(1f, 1f, 1f, 0.8f);
+            Transform dot = button.transform.Find("Dot");
+            if (dot != null) dot.gameObject.SetActive(hasUnread);
         }
     }
 

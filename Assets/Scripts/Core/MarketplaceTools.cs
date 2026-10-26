@@ -50,7 +50,7 @@ namespace Barabashka.Core
                     provider = MarketplaceProviderRegistry.Default;
                     if (MarketplaceProviderRegistry.ShouldAsk)
                     {
-                        return ToolResult.Ok("ASK_PROVIDER|" + Uri.EscapeDataString(query));
+                        return ToolResult.Ok("Где искать «" + query + "»? Скажите «на Озоне» или «на Вайлдберриз», например: найди на Озоне " + query + ".");
                     }
                 }
                 else

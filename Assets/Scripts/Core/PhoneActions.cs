@@ -18,7 +18,9 @@ public static class PhoneActions
         { "wikipedia", "https://ru.wikipedia.org" },
         { "mail", "https://mail.google.com" },
         { "maps", "https://yandex.ru/maps" },
-        { "github", "https://github.com" }
+        { "github", "https://github.com" },
+        { "ozon", "https://www.ozon.ru" },
+        { "wildberries", "https://www.wildberries.ru" }
     };
 
     /// <summary>Название сайта по тому, как его называют голосом («ютуб», «вк», «гитхаб»); null, если сайт неизвестен.</summary>
@@ -34,6 +36,10 @@ public static class PhoneActions
             if (word.StartsWith("почт", StringComparison.Ordinal) || word == "gmail") return "mail";
             if (word.StartsWith("карт", StringComparison.Ordinal)) return "maps";
             if (word.StartsWith("гитхаб", StringComparison.Ordinal) || word == "github") return "github";
+            if (word == "озон" || word == "ozon") return "ozon";
+            if (word == "вб" || word == "wb" || word.StartsWith("вайлдбер", StringComparison.Ordinal) || word.StartsWith("вайлбер", StringComparison.Ordinal) ||
+                word.StartsWith("валбер", StringComparison.Ordinal) || word.StartsWith("валдбер", StringComparison.Ordinal) ||
+                word.StartsWith("вилдбер", StringComparison.Ordinal) || word.StartsWith("wildber", StringComparison.Ordinal)) return "wildberries";
         }
         return null;
     }
@@ -49,7 +55,12 @@ public static class PhoneActions
     // Как приложение называют голосом -> как оно называется в списке приложений.
     private static readonly string[][] AppAliases =
     {
-        new[] { "телеграм", "telegram" }, new[] { "ватсап", "whatsapp" }, new[] { "вотсап", "whatsapp" }, new[] { "вацап", "whatsapp" },
+        new[] { "телеграм", "telegram" },
+        // Маркетплейсы: в списке приложений они подписаны латиницей, а говорят по-русски и по-разному.
+        new[] { "озон", "ozon" }, new[] { "вайлдбер", "wildberries", "wb" }, new[] { "вайлбер", "wildberries", "wb" },
+        new[] { "валдбер", "wildberries", "wb" }, new[] { "валбер", "wildberries", "wb" }, new[] { "вилдбер", "wildberries", "wb" },
+        new[] { "вб", "wildberries", "wb" }, new[] { "вайлд", "wildberries", "wb" },
+        new[] { "ватсап", "whatsapp" }, new[] { "вотсап", "whatsapp" }, new[] { "вацап", "whatsapp" },
         new[] { "вайбер", "viber" }, new[] { "ютуб", "youtube" }, new[] { "ютюб", "youtube" }, new[] { "хром", "chrome" },
         new[] { "браузер", "chrome", "browser", "firefox", "яндекс браузер", "opera", "internet" },
         new[] { "камер", "camera", "камера" }, new[] { "галере", "gallery", "галерея", "photos", "фото" },
@@ -62,7 +73,9 @@ public static class PhoneActions
         new[] { "плей", "play store", "play маркет" }, new[] { "файл", "files", "файлы" }, new[] { "заметк", "keep", "notes", "заметки" },
         new[] { "диктофон", "recorder", "диктофон" }, new[] { "вконтакт", "vk", "вконтакте" }, new[] { "вк", "vk", "вконтакте" },
         new[] { "инстаграм", "instagram" }, new[] { "тикток", "tiktok" }, new[] { "такси", "taxi", "такси", "go" },
-        new[] { "сбер", "сбербанк", "sber" }, new[] { "гугл", "google" }, new[] { "яндекс", "yandex", "яндекс" }
+        new[] { "сбер", "сбербанк", "sber" }, new[] { "гугл", "google" },
+        // Просто «яндекс» обрабатывает OpenApp отдельно (иначе открывался бы любой «Yandex …», например такси «Go»).
+        new[] { "яндекс го", "яндекс go", "yandex go" }, new[] { "яндекс такси", "яндекс go", "yandex go" }
     };
 
     private static string NormalizeName(string value)
@@ -125,6 +138,17 @@ public static class PhoneActions
         if (name.Length == 0) return "Не понял, какое приложение открыть.";
 
         List<AppEntry> apps = ListApps();
+
+        // Просто «яндекс»: само приложение «Яндекс» или Яндекс Браузер, иначе сайт. Такси и другие сервисы - только по названию.
+        string normalized = NormalizeName(name);
+        if (normalized == "яндекс" || normalized == "яндексе" || normalized == "яндекса" || normalized == "yandex")
+        {
+            foreach (string wanted in new[] { "яндекс", "yandex", "яндекс браузер", "yandex browser" })
+                foreach (AppEntry candidate in apps)
+                    if (NormalizeName(candidate.Label) == wanted) return LaunchApp(candidate);
+            return OpenSite("yandex");
+        }
+
         AppEntry app = MatchApp(name, apps);
         if (app != null) return LaunchApp(app);
 

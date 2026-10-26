@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using Barabashka.Contracts;
 using Barabashka.MarketplaceProviders;
+using Barabashka.Core;
 
 /// <summary>
 /// Реестр инструментов нового образца (IAgentTool). Сюда подключаются новые возможности агента;

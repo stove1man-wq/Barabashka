@@ -1,21 +1,33 @@
-using System.Collections.Generic;
 using System;
+using System.Collections.Generic;
 using System.Text;
-using Barabashka.MarketplaceProviders;
 using Barabashka.Contracts;
 
 namespace Barabashka.Core
 {
     /// <summary>
     /// Разбор голосовых команд для маркетплейсов:
-    /// «найди на Озоне ...», «найди на Вайлдберриз ...», «поищи на маркетплейсе ...»,
-    /// «открой ссылку на товар», «открой товар ...»
+    /// «найди на Озоне ...», «найди стул на Вайлдберриз», «поищи на маркетплейсе ...»,
+    /// «открой ссылку на товар», «открой товар ...».
+    /// Поиск срабатывает ТОЛЬКО если в фразе назван магазин (или слово «маркетплейс»):
+    /// иначе «найди все приложения на телефоне» уходило бы в поиск товаров.
+    /// «Открой Вайлдберриз / Озон» сюда не попадает: это открытие приложения (см. алиасы в PhoneActions).
     /// </summary>
     public static class MarketplaceParser
     {
-        private static readonly string[] SearchVerbs = { "найди", "найти", "поищи", "поискать", "покажи", "показать" };
+        private static readonly string[] SearchVerbs =
+        {
+            "найди", "найдите", "найти", "поищи", "поищите", "поискать", "ищи", "искать", "покажи", "показать"
+        };
         private static readonly string[] OpenVerbs = { "открой", "открыть", "перейди", "перейти", "запусти", "запустить" };
-        private static readonly string[] MarketplaceWords = { "маркетплейс", "маркет", "магазин" };
+        private static readonly string[] Prepositions = { "на", "в", "во", "по", "у", "для", "с", "из" };
+        private static readonly string[] Fillers = { "мне", "пожалуйста" };
+        private static readonly string[] AppWords = { "приложение", "приложения", "приложению", "программа", "программу" };
+        private static readonly string[] OzonWords = { "озон", "озоне", "озона", "озону", "озоном", "ozon" };
+        private static readonly string[] WildberriesPrefixes =
+        {
+            "вайлдбер", "вайлбер", "валдбер", "валбер", "вилдбер", "вайлдбир", "вайлбир", "вайлдбр", "wildber", "вайлд"
+        };
 
         /// <summary>Пытается разобрать команду поиска товара на маркетплейсе.</summary>
         public static bool TrySearch(string lower, out string command)
@@ -23,24 +35,52 @@ namespace Barabashka.Core
             command = null;
             if (string.IsNullOrWhiteSpace(lower)) return false;
 
-            string providerId = DetectProvider(lower);
-
-            foreach (string verb in SearchVerbs)
+            string[] words = Split(lower);
+            int verbAt = -1;
+            for (int i = 0; i < words.Length; i++)
             {
-                int idx = lower.IndexOf(verb, StringComparison.Ordinal);
-                if (idx < 0) continue;
-
-                string afterVerb = lower.Substring(idx + verb.Length).Trim();
-                string query = CleanQuery(afterVerb, providerId);
-                if (string.IsNullOrWhiteSpace(query)) continue;
-
-                string provider = providerId == "ask" ? "auto" : (providerId ?? "auto");
-                command = Tool("marketplace_search",
-                    new KeyValuePair<string, string>("query", query),
-                    new KeyValuePair<string, string>("provider", provider));
-                return true;
+                if (Array.IndexOf(SearchVerbs, words[i]) >= 0) { verbAt = i; break; }
             }
-            return false;
+            if (verbAt < 0) return false;
+
+            // Название магазина ищем во всей фразе («на озоне найди стул» тоже работает), запрос - слова после глагола.
+            string providerId = null;
+            var query = new List<string>();
+            for (int i = 0; i < words.Length; i++)
+            {
+                string word = words[i];
+
+                // «вайлд берис», сказанное с паузой: вторую половину названия пропускаем.
+                if (i > 0 && words[i - 1].StartsWith("вайлд", StringComparison.Ordinal) && word.StartsWith("бер", StringComparison.Ordinal))
+                    continue;
+
+                string id = ProviderOfWord(word);
+                if (id != null)
+                {
+                    // Конкретный магазин важнее слова «маркетплейс».
+                    if (providerId == null || providerId == "ask") providerId = id;
+                    // Предлог перед названием («на озоне») в запрос не берём.
+                    if (i > verbAt && query.Count > 0 && Array.IndexOf(Prepositions, query[query.Count - 1]) >= 0)
+                        query.RemoveAt(query.Count - 1);
+                    continue;
+                }
+
+                if (i > verbAt && Array.IndexOf(Fillers, word) < 0) query.Add(word);
+            }
+
+            if (providerId == null) return false;
+
+            // «Найди приложение Озон» - это про приложение, а не про товар.
+            bool onlyAppWords = true;
+            foreach (string word in query)
+                if (Array.IndexOf(AppWords, word) < 0) { onlyAppWords = false; break; }
+            if (query.Count == 0 || onlyAppWords) return false;
+
+            string provider = providerId == "ask" ? "auto" : providerId;
+            command = Tool("marketplace_search",
+                new KeyValuePair<string, string>("query", string.Join(" ", query.ToArray())),
+                new KeyValuePair<string, string>("provider", provider));
+            return true;
         }
 
         /// <summary>Пытается разобрать команду открытия ссылки на товар.</summary>
@@ -86,40 +126,29 @@ namespace Barabashka.Core
             return false;
         }
 
-        private static string DetectProvider(string text)
+        /// <summary>Какому магазину принадлежит слово: ozon, wildberries, ask («маркетплейс») или null.</summary>
+        private static string ProviderOfWord(string word)
         {
-            if (ContainsAny(text, "озон", "ozon", "на озоне", "в озоне")) return "ozon";
-            if (ContainsAny(text, "вайлдберриз", "wildberries", "вб", "wb",
-                "на вайлдберриз", "в вайлдберриз", "на wildberries", "в wildberries")) return "wildberries";
-            if (ContainsAny(text, MarketplaceWords)) return "ask";
+            if (Array.IndexOf(OzonWords, word) >= 0) return "ozon";
+            if (word == "вб" || word == "wb") return "wildberries";
+            foreach (string prefix in WildberriesPrefixes)
+                if (word.StartsWith(prefix, StringComparison.Ordinal)) return "wildberries";
+            if (word.StartsWith("маркетплейс", StringComparison.Ordinal) || word == "маркет" || word == "маркете" || word == "маркета")
+                return "ask";
             return null;
         }
 
-        private static string CleanQuery(string query, string providerId)
+        private static string[] Split(string text)
         {
-            string[] toRemove = { "на озоне", "в озоне", "на вайлдберриз", "в вайлдберриз",
-                "на wildberries", "в wildberries", "на маркетплейсе", "в маркетплейсе",
-                "на маркете", "в маркете" };
-            foreach (string remove in toRemove)
-                query = query.Replace(remove, string.Empty);
-
-            string[] prefixes = { "на ", "в ", "по ", "для ", "у " };
-            foreach (string prefix in prefixes)
+            var list = new List<string>();
+            var sb = new StringBuilder();
+            foreach (char c in text.ToLowerInvariant())
             {
-                if (query.StartsWith(prefix, StringComparison.Ordinal))
-                {
-                    query = query.Substring(prefix.Length);
-                    break;
-                }
+                if (char.IsLetterOrDigit(c)) sb.Append(c);
+                else if (sb.Length > 0) { list.Add(sb.ToString()); sb.Length = 0; }
             }
-            return query.Trim();
-        }
-
-        private static bool ContainsAny(string text, params string[] fragments)
-        {
-            foreach (string fragment in fragments)
-                if (text.Contains(fragment)) return true;
-            return false;
+            if (sb.Length > 0) list.Add(sb.ToString());
+            return list.ToArray();
         }
 
         private static string Tool(string name, params KeyValuePair<string, string>[] pairs)
