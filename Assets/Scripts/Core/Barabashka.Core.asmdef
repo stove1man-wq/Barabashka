@@ -1,7 +1,7 @@
 {
     "name": "Barabashka.Core",
     "rootNamespace": "",
-    "references": [ "Barabashka.Contracts", "Barabashka.App", "UnityEngine.UI", "Unity.InputSystem" ],
+    "references": [ "Barabashka.Contracts", "Barabashka.App", "Barabashka.MarketplaceProviders", "UnityEngine.UI", "Unity.InputSystem" ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

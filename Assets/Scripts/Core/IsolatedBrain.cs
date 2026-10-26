@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Barabashka.MarketplaceProviders;
 
 public class IsolatedBrain : IAgentBrain
 {
@@ -58,6 +59,13 @@ public class IsolatedBrain : IAgentBrain
         string utilityCommand;
         if (AgentUtilityParser.TryHandle(lower, out utilityCommand))
             return Task.FromResult("COMMAND:" + utilityCommand);
+
+        // Маркетплейсы: поиск и открытие ссылок на товары.
+        string marketplaceCommand;
+        if (MarketplaceParser.TrySearch(lower, out marketplaceCommand))
+            return Task.FromResult("COMMAND:" + marketplaceCommand);
+        if (MarketplaceParser.TryOpen(lower, out marketplaceCommand))
+            return Task.FromResult("COMMAND:" + marketplaceCommand);
 
         string title = ExtractTaskTitle(text, lower);
         if (title != null)

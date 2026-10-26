@@ -48,6 +48,8 @@ public static class CapabilityRegistry
         Add("web_search", "Поиск в интернете", RiskLevel.Prepare, net, false);
         Add("open_site", "Открыть сайт", RiskLevel.Prepare, net, false);
         Add("open_url", "Открыть ссылку", RiskLevel.Prepare, net, false);
+        Add("marketplace.search", "Поиск на маркетплейсе", RiskLevel.Prepare, net, false);
+        Add("marketplace.open", "Открыть товар на маркетплейсе", RiskLevel.Prepare, net, false);
         Add("route", "Показать место на карте", RiskLevel.Prepare, net, false);
         Add("battery", "Заряд батареи", RiskLevel.Observe, none, false);
         Add("flashlight", "Фонарик", RiskLevel.Prepare, none, true);

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Barabashka.Contracts;
+using Barabashka.MarketplaceProviders;
 
 /// <summary>
 /// Реестр инструментов нового образца (IAgentTool). Сюда подключаются новые возможности агента;
@@ -61,6 +62,8 @@ public sealed class AgentToolRegistry : IToolRegistry
         registry.Register(new CallTool());
         registry.Register(new MessageTool());
         registry.Register(new TelegramReadTool());
+        registry.Register(new MarketplaceSearchTool());
+        registry.Register(new MarketplaceOpenTool());
         return registry;
     }
 
