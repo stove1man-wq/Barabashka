@@ -181,6 +181,8 @@ public partial class AgentUIManager
         messageLayout.minHeight = 30f;
         messageLayout.flexibleWidth = 1f;
 
+        if (!string.IsNullOrEmpty(rec.Media)) AddMediaThumbnail(card.transform, rec);
+
         string copied = rec.Text;
         Button copyButton = CreateButton("CopyMessage", card.transform, "Копировать",
             new Color(0.13f, 0.19f, 0.27f, 1f), 14);
@@ -200,6 +202,99 @@ public partial class AgentUIManager
 
         _cards[rec.Id] = new CardView { Root = card, Background = cardImage };
         card.SetActive(IsVisible(rec));
+    }
+
+    // Миниатюра вложения: нажатие открывает полноэкранный просмотр (его даёт блок Media через MediaServices).
+    private void AddMediaThumbnail(Transform parent, ChatRecord rec)
+    {
+        Barabashka.Contracts.MediaItem item = Barabashka.Contracts.MediaCodec.Decode(rec.Media);
+        if (item == null) return;
+
+        Image frame = CreateImage("MediaThumb", parent, new Color(0.10f, 0.13f, 0.19f, 1f));
+        SetRoundedSprite(frame);
+        LayoutElement frameLayout = frame.gameObject.AddComponent<LayoutElement>();
+        frameLayout.preferredHeight = 320f;
+        frameLayout.flexibleWidth = 1f;
+
+        bool isVideo = item.Kind == Barabashka.Contracts.MediaKind.Video;
+        Texture2D texture = ChatThumbnails.Load(item, 512);
+        Image picture = CreateImage("Picture", frame.transform, Color.white);
+        picture.raycastTarget = false;
+        if (texture != null)
+        {
+            picture.sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+            picture.preserveAspect = true;
+            frame.gameObject.AddComponent<ThumbnailOwner>().Init(texture, picture.sprite);
+            Stretch(picture.rectTransform, Vector2.zero, Vector2.one, new Vector2(6f, 6f), new Vector2(-6f, -6f));
+        }
+        else
+        {
+            // Файла нет или он не читается: значок раздела «Медиа» на тёмной подложке.
+            picture.sprite = ChatIcons.Get("media");
+            picture.color = new Color(1f, 1f, 1f, 0.45f);
+            picture.preserveAspect = true;
+            Place(picture.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-60f, -60f), new Vector2(60f, 60f));
+        }
+
+        if (isVideo)
+        {
+            // Кнопка воспроизведения поверх кадра и длительность в углу.
+            Image play = CreateImage("PlayBadge", frame.transform, new Color(1f, 1f, 1f, 0.92f));
+            play.sprite = ChatIcons.Get("play");
+            play.raycastTarget = false;
+            Place(play.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-55f, -55f), new Vector2(55f, 55f));
+            if (item.DurationSeconds > 0)
+            {
+                int total = (int)item.DurationSeconds;
+                string label = total >= 3600
+                    ? (total / 3600) + ":" + ((total % 3600) / 60).ToString("00") + ":" + (total % 60).ToString("00")
+                    : (total / 60) + ":" + (total % 60).ToString("00");
+                Text duration = CreateText("Duration", frame.transform, label, 30, Color.white, TextAnchor.LowerRight);
+                duration.raycastTarget = false;
+                Stretch(duration.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 8f), new Vector2(-16f, -10f));
+            }
+        }
+
+        Button button = frame.gameObject.AddComponent<Button>();
+        button.targetGraphic = frame;
+        long id = rec.Id;
+        button.onClick.AddListener(() => OpenMedia(id));
+    }
+
+    // Открывает просмотр: все вложения того же вида (картинки или видео), начиная с выбранного, чтобы листать их.
+    private void OpenMedia(long id)
+    {
+        Barabashka.Contracts.IMediaViewer viewer = Barabashka.Contracts.MediaServices.Viewer;
+        if (viewer == null)
+        {
+            SetStatus("Просмотр картинок сейчас недоступен");
+            return;
+        }
+
+        var items = new List<Barabashka.Contracts.MediaItem>();
+        int start = 0;
+        ChatRecord tapped = FindRecord(id);
+        Barabashka.Contracts.MediaItem tappedItem = tapped != null && !string.IsNullOrEmpty(tapped.Media)
+            ? Barabashka.Contracts.MediaCodec.Decode(tapped.Media) : null;
+        if (tappedItem == null)
+        {
+            SetStatus("Это вложение пока нельзя открыть");
+            return;
+        }
+        foreach (ChatRecord other in _records)
+        {
+            if (other.Deleted || string.IsNullOrEmpty(other.Media)) continue;
+            Barabashka.Contracts.MediaItem item = Barabashka.Contracts.MediaCodec.Decode(other.Media);
+            if (item == null || item.Kind != tappedItem.Kind) continue;
+            if (other.Id == id) start = items.Count;
+            items.Add(item);
+        }
+        if (items.Count == 0)
+        {
+            SetStatus("Это вложение пока нельзя открыть");
+            return;
+        }
+        viewer.Show(items, start);
     }
 
     private ChatRecord FindRecord(long id)

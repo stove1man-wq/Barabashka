@@ -9,7 +9,8 @@ public enum ChatKind
     Notes = 2,
     Telegram = 3,
     System = 4,
-    Purchases = 5
+    Purchases = 5,
+    Media = 6
 }
 
 /// <summary>
@@ -18,11 +19,11 @@ public enum ChatKind
 /// </summary>
 public static class ChatKinds
 {
-    public const int Count = 6;
+    public const int Count = 7;
 
     public static readonly ChatKind[] All =
     {
-        ChatKind.Dialog, ChatKind.Phone, ChatKind.Notes, ChatKind.Telegram, ChatKind.System, ChatKind.Purchases
+        ChatKind.Dialog, ChatKind.Phone, ChatKind.Notes, ChatKind.Telegram, ChatKind.System, ChatKind.Purchases, ChatKind.Media
     };
 
     /// <summary>Раздел текущего хода (начинается с каждым новым сообщением человека).</summary>
@@ -51,6 +52,7 @@ public static class ChatKinds
             case ChatKind.Telegram: return "Telegram";
             case ChatKind.System: return "Система";
             case ChatKind.Purchases: return "Покупки";
+            case ChatKind.Media: return "Медиа";
             default: return "Диалог";
         }
     }
@@ -65,6 +67,7 @@ public static class ChatKinds
             case ChatKind.Telegram: return new Color(0.15f, 0.65f, 0.85f, 1f);
             case ChatKind.System: return new Color(0.55f, 0.38f, 0.80f, 1f);
             case ChatKind.Purchases: return new Color(0.85f, 0.35f, 0.25f, 1f);
+            case ChatKind.Media: return new Color(0.76f, 0.20f, 0.43f, 1f);
             default: return new Color(0.20f, 0.45f, 0.75f, 1f);
         }
     }
@@ -84,6 +87,8 @@ public static class ChatKinds
                 return isUser ? new Color(0.21f, 0.14f, 0.30f, 1f) : new Color(0.15f, 0.10f, 0.22f, 1f);
             case ChatKind.Purchases:
                 return isUser ? new Color(0.30f, 0.12f, 0.08f, 1f) : new Color(0.22f, 0.09f, 0.06f, 1f);
+            case ChatKind.Media:
+                return isUser ? new Color(0.24f, 0.08f, 0.16f, 1f) : new Color(0.165f, 0.06f, 0.11f, 1f);
             default:
                 return isUser ? new Color(0.10f, 0.23f, 0.36f, 1f) : new Color(0.085f, 0.115f, 0.17f, 1f);
         }
@@ -107,6 +112,8 @@ public static class ChatKinds
             return ChatKind.Notes;
         if (id.StartsWith("marketplace_", StringComparison.Ordinal))
             return ChatKind.Purchases;
+        if (id.StartsWith("media_", StringComparison.Ordinal))
+            return ChatKind.Media;
         switch (id)
         {
             case "call":

@@ -121,6 +121,7 @@ public static class ChatCommands
         if (Has(w, "телефон", "звонк", "контакт", "смс")) { kind = ChatKind.Phone; return true; }
         if (Has(w, "заметк", "задач", "напомин", "будильник") || Any(w, "дела", "дел")) { kind = ChatKind.Notes; return true; }
         if (Has(w, "покупк", "маркет", "озон", "wildberries", "вайлдберриз")) { kind = ChatKind.Purchases; return true; }
+        if (Has(w, "медиа", "видео", "картинк", "фото", "изображен", "галере")) { kind = ChatKind.Media; return true; }
         if (Has(w, "систем", "настрой")) { kind = ChatKind.System; return true; }
         if (Has(w, "диалог", "разговор", "обычн")) { kind = ChatKind.Dialog; return true; }
         return false;

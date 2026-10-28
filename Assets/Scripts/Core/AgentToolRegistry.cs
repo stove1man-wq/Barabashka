@@ -65,6 +65,8 @@ public sealed class AgentToolRegistry : IToolRegistry
         registry.Register(new TelegramReadTool());
         registry.Register(new MarketplaceSearchTool());
         registry.Register(new MarketplaceOpenTool());
+        registry.Register(new MediaPickTool());
+        registry.Register(new MediaControlTool());
         return registry;
     }
 

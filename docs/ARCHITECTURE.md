@@ -9,6 +9,7 @@ Core         -> Contracts                        мозг, роутер кома
 Voice.*      -> Contracts                        Sherpa (распознавание), WindowsTts / AndroidTts (озвучка)
 App          -> Contracts                        MainThreadDispatcher, VoiceInputChannel
 Composition  -> все выше                         VoiceBootstrap: единственное место, где блоки соединяются
+Media        -> Contracts                        просмотр картинок и видео, выбор файлов (см. docs/MEDIA.md)
 LocalLlm     -> Contracts                        модель на телефоне (LLMUnity), только при наличии пакета ai.undream.llm
 Notifications-> Contracts                        уведомления Android (пакет com.unity.mobile.notifications)
 ```
@@ -33,6 +34,9 @@ Notifications-> Contracts                        уведомления Android 
 
 ## Telegram
 `TelegramClient` работает с TDLib (`TdJson`, нативная `libtdjson.so`, собирается workflow `.github/workflows/build-tdlib-android.yml`): поток приёма, запросы с `@extra`, состояния входа, чаты, чтение истории, отправка с проверкой доставки. `TelegramConnector` показывает состояние в `/подключения`; `telegram_read` требует этого коннектора. Подробнее: `docs/TELEGRAM.md`.
+
+## Медиа
+Просмотр картинок и видео, источники и выбор файлов: `docs/MEDIA.md`. В `Contracts` лежат только интерфейсы (`IMediaViewer`, `IMediaSource`, `IMediaPicker`) и `MediaItem`; реализация в сборке `Barabashka.Media`, подключается в `Composition` через `MediaServices`.
 
 ## Платформы
 Android-вызовы идут через `AndroidJavaObject` под `#if UNITY_ANDROID && !UNITY_EDITOR`, на ПК действия возвращают понятное сообщение. Видимость приложений и службы - `Assets/Plugins/Android/BarabashkaTtsQueries.androidlib/AndroidManifest.xml` (запросы `<queries>` и разрешения).

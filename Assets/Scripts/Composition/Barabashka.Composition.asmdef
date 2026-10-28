@@ -1,7 +1,7 @@
 {
     "name": "Barabashka.Composition",
     "rootNamespace": "Barabashka.Composition",
-    "references": [ "Barabashka.Contracts", "Barabashka.App", "Barabashka.Core", "Barabashka.Voice.Sherpa", "Barabashka.Voice.WindowsTts", "Barabashka.Voice.AndroidTts" ],
+    "references": [ "Barabashka.Contracts", "Barabashka.App", "Barabashka.Core", "Barabashka.Voice.Sherpa", "Barabashka.Voice.WindowsTts", "Barabashka.Voice.AndroidTts", "Barabashka.Media" ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

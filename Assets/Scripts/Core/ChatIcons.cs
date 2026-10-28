@@ -17,6 +17,8 @@ public static class ChatIcons
     private static readonly float[] BubbleTail = { 0.24f, 0.40f, 0.46f, 0.40f, 0.26f, 0.17f };
     private static readonly float[] PlaneWing1 = { 0.08f, 0.52f, 0.92f, 0.86f, 0.40f, 0.38f };
     private static readonly float[] PlaneWing2 = { 0.92f, 0.86f, 0.62f, 0.12f, 0.46f, 0.34f };
+    private static readonly float[] PlayCut = { 0.40f, 0.29f, 0.40f, 0.71f, 0.73f, 0.50f };
+    private static readonly float[] MediaPlay = { 0.43f, 0.37f, 0.43f, 0.63f, 0.64f, 0.50f };
     private static readonly float[] CartBasket = { 0.30f, 0.40f, 0.84f, 0.40f, 0.92f, 0.68f, 0.26f, 0.68f };
 
     public static Sprite Get(string id)
@@ -90,6 +92,14 @@ public static class ChatIcons
                         d = Mathf.Min(d, RoundRect(x, y, 0.5f + 0.30f * Mathf.Cos(a), 0.5f + 0.30f * Mathf.Sin(a), 0.075f, 0.05f, 0.02f, a));
                     }
                     return Mathf.Max(d, -Circle(x, y, 0.5f, 0.5f, 0.115f));
+                };
+            case "play":
+                return (x, y) => Mathf.Max(Circle(x, y, 0.5f, 0.5f, 0.46f), -Poly(x, y, PlayCut));
+            case "media":
+                return (x, y) =>
+                {
+                    float ring = Mathf.Max(RoundRect(x, y, 0.5f, 0.5f, 0.38f, 0.29f, 0.09f), -RoundRect(x, y, 0.5f, 0.5f, 0.305f, 0.215f, 0.04f));
+                    return Mathf.Min(ring, Poly(x, y, MediaPlay));
                 };
             case "purchases":
                 return (x, y) =>

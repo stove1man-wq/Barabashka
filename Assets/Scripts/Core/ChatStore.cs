@@ -18,6 +18,8 @@ public sealed class ChatRecord
     public long DeletedTicks;
     /// <summary>Служебное сообщение: на диск не пишется.</summary>
     public bool Transient;
+    /// <summary>Вложение (картинка, видео, документ) в виде строки MediaCodec.Encode; пусто, если вложения нет.</summary>
+    public string Media;
 
     public bool Deleted { get { return DeletedTicks != 0; } }
 }
@@ -97,7 +99,7 @@ public static class ChatStore
     {
         return r.Id.ToString(CultureInfo.InvariantCulture) + "\t" + (int)r.Kind + "\t" + (r.IsUser ? "1" : "0") + "\t" +
                r.Ticks.ToString(CultureInfo.InvariantCulture) + "\t" + r.DeletedTicks.ToString(CultureInfo.InvariantCulture) + "\t" +
-               Escape(r.Speaker) + "\t" + Escape(r.Text);
+               Escape(r.Speaker) + "\t" + Escape(r.Text) + "\t" + Escape(r.Media);
     }
 
     private static ChatRecord Parse(string line)
@@ -120,7 +122,8 @@ public static class ChatStore
             Ticks = ticks,
             DeletedTicks = deleted,
             Speaker = Unescape(f[5]),
-            Text = Unescape(f[6])
+            Text = Unescape(f[6]),
+            Media = f.Length > 7 ? Unescape(f[7]) : string.Empty
         };
     }
 

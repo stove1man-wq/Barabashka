@@ -329,15 +329,24 @@ public partial class AgentUIManager : MonoBehaviour
             RefreshSubtitles();
         }
 
+        // Вложение (выбранная картинка) прикрепляется к ближайшему ответу агента.
+        string attachment = null;
+        if (!isUser)
+        {
+            Barabashka.Contracts.MediaItem pending = Barabashka.Contracts.MediaServices.TakePendingAttachment();
+            if (pending != null) attachment = Barabashka.Contracts.MediaCodec.Encode(pending);
+        }
+
         var rec = new ChatRecord
         {
             Id = _nextId++,
-            Kind = kind.HasValue ? kind.Value : ChatKinds.Current,
+            Kind = kind.HasValue ? kind.Value : (attachment != null ? ChatKind.Media : ChatKinds.Current),
             IsUser = isUser,
             Speaker = speaker,
             Text = safeMessage,
             Ticks = DateTime.UtcNow.Ticks,
-            Transient = transient
+            Transient = transient,
+            Media = attachment
         };
         _records.Add(rec);
         if (!kind.HasValue) _turn.Add(rec);

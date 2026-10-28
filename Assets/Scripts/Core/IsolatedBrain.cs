@@ -41,6 +41,13 @@ public class IsolatedBrain : IAgentBrain
         // Числа словами -> цифры («задачу два» -> «задачу 2»): распознавание речи часто даёт слова.
         string lowerNum = RuNumbers.Replace(lower);
 
+        // Картинки: управление открытым просмотром («дальше», «назад», «закрой») и выбор фото.
+        string mediaCommand;
+        if (MediaParser.TryControl(lower, out mediaCommand))
+            return Task.FromResult("COMMAND:" + mediaCommand);
+        if (MediaParser.TryPick(lower, out mediaCommand))
+            return Task.FromResult("COMMAND:" + mediaCommand);
+
         // Звонки и сообщения людям из контактов: раньше напоминаний, чтобы «напиши, что буду через 5 минут» не стало таймером.
         string contactCommand;
         if (!IsRefusal(lower) && AgentPhoneParser.TryContactAction(lowerNum, lower, out contactCommand))
