@@ -26,6 +26,8 @@ namespace Barabashka.Contracts
         public string Title;
         public RiskLevel Risk;
         public NetworkNeed Network;
+        /// <summary>Куда идёт сеть: российские службы, зарубежные или никуда. Для None заполнять не нужно (по умолчанию None).</summary>
+        public NetworkZone Zone;
         public bool AndroidOnly;
         public string[] Permissions = new string[0];
         /// <summary>Нельзя отменить (удаление): всегда требует подтверждения, даже в режиме «полный цикл».</summary>
