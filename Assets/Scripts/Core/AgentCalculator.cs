@@ -20,7 +20,7 @@ public static class AgentCalculator
 
     // «умножь 12 на 7», «раздели 100 на 4», «вычти 3 из 10», «сложи 5 и 8», «прибавь 5 к 8»
     private static readonly Regex Multiply = new Regex(@"(?:умножь|помножь|умножить|помножить)\s+" + Num + @"\s+на\s+" + Num, Opt);
-    private static readonly Regex Divide = new Regex(@"(?:раздели|подели|разделить|поделить)\s+" + Num + @"\s+на\s+" + Num, Opt);
+    private static readonly Regex Divide = new Regex(@"(?:раздели|подели|дели|разделить|поделить|делить)\s+" + Num + @"\s+на\s+" + Num, Opt);
     private static readonly Regex Subtract = new Regex(@"(?:вычти|вычесть|отними|отнять)\s+" + Num + @"\s+из\s+" + Num, Opt);
     private static readonly Regex Add = new Regex(@"(?:сложи|сложить|прибавь|прибавить)\s+" + Num + @"\s+(?:и|к)\s+" + Num, Opt);
 
@@ -31,7 +31,7 @@ public static class AgentCalculator
 
     // Слова-операции понятны и без «сколько будет»; значки (+ - * /) требуют вводного слова.
     private static readonly Regex WordBinary = new Regex(
-        Num + @"\s*(плюс|минус|умножить на|помножить на|разделить на|поделить на)\s*" + Num, Opt);
+        Num + @"\s*(плюс|минус|умножить на|помножить на|разделить на|поделить на|делить на|делим на)\s*" + Num, Opt);
     private static readonly Regex SymbolBinary = new Regex(
         Num + @"\s*(\+|-|\*|×|/|÷)\s*" + Num, Opt);
 

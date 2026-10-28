@@ -75,7 +75,9 @@ public static class PhoneActions
         new[] { "инстаграм", "instagram" }, new[] { "тикток", "tiktok" }, new[] { "такси", "taxi", "такси", "go" },
         new[] { "сбер", "сбербанк", "sber" }, new[] { "гугл", "google" },
         // Просто «яндекс» обрабатывает OpenApp отдельно (иначе открывался бы любой «Yandex …», например такси «Go»).
-        new[] { "яндекс го", "яндекс go", "yandex go" }, new[] { "яндекс такси", "яндекс go", "yandex go" }
+        // Яндекс Go (бывшее Яндекс Такси) находим и по названию, и по пакету ru.yandex.taxi: подпись у разных версий отличается.
+        new[] { "яндекс го", "яндекс go", "yandex go", "ru.yandex.taxi" }, new[] { "яндекс такси", "яндекс go", "yandex go", "ru.yandex.taxi" },
+        new[] { "яндекс гоу", "яндекс go", "yandex go", "ru.yandex.taxi" }
     };
 
     private static string NormalizeName(string value)
@@ -114,11 +116,15 @@ public static class PhoneActions
         foreach (AppEntry app in apps)
         {
             string label = NormalizeName(app.Label);
-            if (label.Length == 0) continue;
             int score = 0;
+            // Совпадение по имени пакета (ru.yandex.taxi): надёжнее подписи.
+            if (!string.IsNullOrEmpty(app.Package))
+                foreach (string term in terms)
+                    if (term.IndexOf('.') > 0 && string.Equals(app.Package, term, StringComparison.OrdinalIgnoreCase)) score = 100;
+            if (label.Length == 0 && score == 0) continue;
             foreach (string term in terms)
             {
-                if (term.Length < 2) continue;
+                if (term.Length < 2 || term.IndexOf('.') > 0) continue;
                 if (label == term) score = Math.Max(score, 100);
                 else if (label.StartsWith(term, StringComparison.Ordinal)) score = Math.Max(score, 70);
                 else if (term.Length >= 4 && label.Contains(" " + term)) score = Math.Max(score, 50);
@@ -151,6 +157,18 @@ public static class PhoneActions
 
         AppEntry app = MatchApp(name, apps);
         if (app != null) return LaunchApp(app);
+
+        // «Яндекс Го», «Яндекс Музыка»: название длиннее, чем просто «яндекс». Если приложения нет, это не повод открывать сайт яндекса.
+        if (normalized.StartsWith("яндекс ", StringComparison.Ordinal) || normalized.StartsWith("yandex ", StringComparison.Ordinal))
+        {
+            var related = new List<string>();
+            foreach (AppEntry candidate in apps)
+                if (NormalizeName(candidate.Label).Contains("яндекс") || NormalizeName(candidate.Label).Contains("yandex") ||
+                    (candidate.Package ?? string.Empty).Contains("yandex"))
+                    related.Add(candidate.Label + " [" + candidate.Package + "]");
+            Debug.Log("[Phone] Приложение «" + name + "» не найдено. Яндекс-приложения на телефоне: " + string.Join("; ", related.ToArray()));
+            return "Не нашёл приложение «" + name + "» на телефоне.";
+        }
 
         string site = SiteForSpoken(name);
         if (site != null) return OpenSite(site);

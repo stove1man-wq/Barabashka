@@ -36,6 +36,11 @@ public static class AgentUtilityParser
             return true;
         }
 
+        // «Найди в интернете погода завтра», «загугли погоду»: это поиск в сети (его разбирает AgentPhoneParser), а не прогноз.
+        // Иначе «в интернете» принимается за город («не нашёл такого города»).
+        if (w[0] == "загугли" || w[0] == "погугли" || Has(w, "интернете") || Has(w, "гугле") || Has(w, "яндексе"))
+            return TryNotes(w, out command);
+
         bool weather = false;
         foreach (string word in w)
         {
