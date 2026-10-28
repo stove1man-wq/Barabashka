@@ -319,13 +319,17 @@ namespace Barabashka.Media
             speakerRect.anchoredPosition = new Vector2(290f, 0f);
 
             _volume = ScrubBar.Create(second, "Volume", Accent, new Color(0.28f, 0.34f, 0.46f, 1f));
-            Stretch(_volume.GetComponent<RectTransform>(), new Vector2(380f, 10f), new Vector2(-30f, -10f));
+            // Справа оставлено место под кнопку полного экрана: 30 отступ + 100 кнопка + 20 зазор.
+            Stretch(_volume.GetComponent<RectTransform>(), new Vector2(380f, 10f), new Vector2(-150f, -10f));
             _volume.Value = _volumeValue;
             _volume.Changed += OnVolumeChanged;
 
-            // Полноэкранный режим.
-            _fullscreenButton = MakeButton("Fullscreen", second, VideoArt.Icon("fullscreen"), new Vector2(130f, 130f), out icon);
-            PlaceCenter(_fullscreenButton, 520f);
+            // Полноэкранный режим: кнопка прижата к правому краю строки, поэтому видна и в портрете, и в альбоме.
+            _fullscreenButton = MakeButton("Fullscreen", second, VideoArt.Icon("fullscreen"), new Vector2(100f, 100f), out icon);
+            RectTransform fullscreenRect = _fullscreenButton.GetComponent<RectTransform>();
+            fullscreenRect.anchorMin = fullscreenRect.anchorMax = new Vector2(1f, 0.5f);
+            fullscreenRect.pivot = new Vector2(1f, 0.5f);
+            fullscreenRect.anchoredPosition = new Vector2(-30f, 0f);
             _fullscreenButton.onClick.AddListener(ToggleFullscreen);
             _fullscreenButton.GetComponent<Image>().color = white;
 
