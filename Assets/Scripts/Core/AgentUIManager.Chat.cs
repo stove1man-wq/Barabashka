@@ -253,6 +253,21 @@ public partial class AgentUIManager
                 duration.raycastTarget = false;
                 Stretch(duration.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 8f), new Vector2(-16f, -10f));
             }
+
+            // Кнопка «на весь экран» в углу миниатюры.
+            Button fullscreenBtn = CreateButton("FullscreenBadge", frame.transform, string.Empty, new Color(0f, 0f, 0f, 0f), 1);
+            Image fullscreenIcon = CreateImage("FullscreenIcon", fullscreenBtn.transform, new Color(1f, 1f, 1f, 0.92f));
+            fullscreenIcon.sprite = ChatIcons.Get("fullscreen");
+            fullscreenIcon.preserveAspect = true;
+            fullscreenIcon.raycastTarget = false;
+            Stretch(fullscreenIcon.rectTransform, Vector2.zero, Vector2.one, new Vector2(6f, 6f), new Vector2(-6f, -6f));
+            fullscreenBtn.onClick.AddListener(() =>
+            {
+                // Открываем просмотр и сразу включаем полноэкранный режим
+                OpenMedia(id);
+                // Небольшая задержка, чтобы просмотр успел открыться
+                StartCoroutine(EnableFullscreenAfterOpen());
+            });
         }
 
         Button button = frame.gameObject.AddComponent<Button>();
@@ -295,6 +310,17 @@ public partial class AgentUIManager
             return;
         }
         viewer.Show(items, start);
+    }
+
+    private System.Collections.IEnumerator EnableFullscreenAfterOpen()
+    {
+        // Ждём один кадр, чтобы просмотр успел открыться
+        yield return null;
+        var viewer = Barabashka.Contracts.MediaServices.Viewer as Barabashka.Contracts.IMediaPlayback;
+        if (viewer != null && viewer.HasVideo)
+        {
+            viewer.SetFullscreen(true);
+        }
     }
 
     private ChatRecord FindRecord(long id)

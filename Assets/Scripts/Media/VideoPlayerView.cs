@@ -11,9 +11,10 @@ using UnityEngine.Video;
 namespace Barabashka.Media
 {
     /// <summary>
-    /// Видеоплеер поверх приложения (этап 2 из docs/MEDIA.md): файлы с телефона и прямые ссылки.
-    /// Кнопки: назад, перемотка на 10 секунд, пауза, предыдущее/следующее, скорость, громкость; ползунок перемотки;
+    /// Видеоплеер поверх приложения (этап 2-3 из docs/MEDIA.md): файлы с телефона и прямые ссылки.
+    /// Кнопки: назад, перемотка на 10 секунд, пауза, предыдущее/следующее, скорость, громкость, полноэкранный режим; ползунок перемотки;
     /// касание видео ставит на паузу. Команды голосом приходят через IMediaViewer и IMediaPlayback.
+    /// Этап 3: полноэкранный режим с автоповортом, скрытие управления, сохранение позиции при повороте.
     /// </summary>
     public sealed class VideoPlayerView : MonoBehaviour, IMediaViewer, IMediaPlayback
     {
@@ -21,6 +22,7 @@ namespace Barabashka.Media
         private const float ControlsHeight = 540f;
         private const float PrepareTimeoutSeconds = 25f;
         private const double SeekStepSeconds = 10.0;
+        private const float ControlsHideDelaySeconds = 3f;
         private static readonly float[] Speeds = { 1f, 1.25f, 1.5f, 2f, 0.5f };
 
         private static readonly Color Panel = new Color(0.16f, 0.21f, 0.30f, 1f);
@@ -45,6 +47,7 @@ namespace Barabashka.Media
         private Image _playIcon;
         private Button _prevButton;
         private Button _nextButton;
+        private Button _fullscreenButton;
         private ScrubBar _seek;
         private ScrubBar _volume;
 
@@ -61,6 +64,13 @@ namespace Barabashka.Media
         private Vector2Int _lastScreen;
         private Rect _lastSafeArea;
 
+        // Fullscreen state
+        private bool _fullscreen;
+        private ScreenOrientation _originalOrientation;
+        private bool _orientationChangeFailed;
+        private float _controlsHideTimer;
+        private bool _controlsVisible = true;
+
         public event Action Closed;
 
         public bool IsOpen { get { return _root != null && _root.activeSelf; } }
@@ -68,6 +78,8 @@ namespace Barabashka.Media
         public bool HasVideo { get { return IsOpen; } }
 
         public bool IsPlaying { get { return _ready && _player != null && _player.isPlaying; } }
+
+        public bool IsFullscreen { get { return _fullscreen; } }
 
         private float CanvasScale { get { return _canvas != null ? Mathf.Max(0.01f, _canvas.scaleFactor) : 1f; } }
 
@@ -311,10 +323,16 @@ namespace Barabashka.Media
             _volume.Value = _volumeValue;
             _volume.Changed += OnVolumeChanged;
 
+            // Полноэкранный режим.
+            _fullscreenButton = MakeButton("Fullscreen", second, VideoArt.Icon("nexttrack"), new Vector2(130f, 130f), out icon);
+            PlaceCenter(_fullscreenButton, 520f);
+            _fullscreenButton.onClick.AddListener(ToggleFullscreen);
+            _fullscreenButton.GetComponent<Image>().color = white;
+
             // Подсказка.
             RectTransform hintRow = MakeRow("HintRow", content, 462f, 60f);
             Text hint = MakeText("Hint", hintRow, 28, new Color(0.55f, 0.63f, 0.76f, 1f), TextAnchor.MiddleCenter);
-            hint.text = "Скажите: «пауза», «продолжи», «на 10 секунд вперёд», «дальше», «закрой»";
+            hint.text = "Скажите: «пауза», «продолжи», «на 10 секунд вперёд», «дальше», «закрой», «на весь экран», «выйти из полного экрана»";
             Stretch(hint.rectTransform, new Vector2(30f, 0f), new Vector2(-30f, 0f));
         }
 
@@ -585,6 +603,129 @@ namespace Barabashka.Media
             _player.SetDirectAudioVolume(0, _volumeValue);
         }
 
+        // ---- Полноэкранный режим ----
+
+        /// <summary>Включить/выключить полноэкранный режим (IMediaPlayback).</summary>
+        public void SetFullscreen(bool fullscreen)
+        {
+            if (_fullscreen == fullscreen) return;
+            if (fullscreen) EnterFullscreen();
+            else ExitFullscreen();
+        }
+
+        private void ToggleFullscreen()
+        {
+            SetFullscreen(!_fullscreen);
+        }
+
+        private void EnterFullscreen()
+        {
+            if (_fullscreen) return;
+            _fullscreen = true;
+
+            // Сохраняем исходную ориентацию и разрешаем автоповорот
+            _originalOrientation = Screen.orientation;
+            _orientationChangeFailed = false;
+
+            try
+            {
+                Screen.orientation = ScreenOrientation.AutoRotation;
+                Screen.autorotateToLandscapeLeft = true;
+                Screen.autorotateToLandscapeRight = true;
+                Screen.autorotateToPortrait = true;
+                Screen.autorotateToPortraitUpsideDown = false;
+            }
+            catch (Exception ex)
+            {
+                _orientationChangeFailed = true;
+                Debug.LogWarning("[Media] Не удалось включить автоповорот: " + ex.Message);
+            }
+
+            // Скрываем системные панели
+            SetFullscreenSystemUI(false);
+
+            // Скрываем верхнюю панель и показываем только видео с управлением поверх
+            if (_topBar != null) _topBar.gameObject.SetActive(false);
+            ApplyLayout();
+
+            // Сбрасываем таймер скрытия управления
+            ResetControlsHideTimer();
+        }
+
+        private void ExitFullscreen()
+        {
+            if (!_fullscreen) return;
+            _fullscreen = false;
+
+            // Восстанавливаем портретную ориентацию
+            try
+            {
+                Screen.orientation = ScreenOrientation.Portrait;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Media] Не удалось вернуть портретную ориентацию: " + ex.Message);
+            }
+
+            // Восстанавливаем системные панели
+            SetFullscreenSystemUI(true);
+
+            // Показываем верхнюю панель
+            if (_topBar != null) _topBar.gameObject.SetActive(true);
+            ApplyLayout();
+
+            // Показываем управление
+            ShowControls(true);
+        }
+
+        private void SetFullscreenSystemUI(bool show)
+        {
+            try
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+                using (var window = activity.Call<AndroidJavaObject>("getWindow"))
+                using (var decorView = window.Call<AndroidJavaObject>("getDecorView"))
+                {
+                    int flags = (int)decorView.Call<int>("getSystemUiVisibility");
+                    if (show)
+                    {
+                        // Показываем системные панели
+                        flags &= ~(1 << 2); // SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        flags &= ~(1 << 4); // SYSTEM_UI_FLAG_FULLSCREEN
+                        flags &= ~(1 << 8); // SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    }
+                    else
+                    {
+                        // Скрываем системные панели (immersive sticky)
+                        flags |= (1 << 2);  // SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        flags |= (1 << 4);  // SYSTEM_UI_FLAG_FULLSCREEN
+                        flags |= (1 << 8);  // SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    }
+                    decorView.Call("setSystemUiVisibility", flags);
+                }
+#endif
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Media] Не удалось изменить системные панели: " + ex.Message);
+            }
+        }
+
+        private void ResetControlsHideTimer()
+        {
+            _controlsHideTimer = ControlsHideDelaySeconds;
+        }
+
+        private void ShowControls(bool show)
+        {
+            if (_controlsVisible == show) return;
+            _controlsVisible = show;
+            if (_controls != null) _controls.gameObject.SetActive(show);
+            if (_fullscreenButton != null) _fullscreenButton.gameObject.SetActive(show);
+        }
+
         private void OnVolumeChanged(float value)
         {
             _volumeValue = value;
@@ -650,11 +791,43 @@ namespace Barabashka.Media
         {
             if (!IsOpen) return;
 
-            Keyboard keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+            // Android Back кнопка/жест: в полноэкранном режиме выходит из него, иначе закрывает плеер
+            if (Input.GetKeyDown(KeyCode.Escape))
             {
+                if (_fullscreen)
+                {
+                    SetFullscreen(false);
+                    return;
+                }
                 Close();
                 return;
+            }
+
+            // Тап по экрану: переключает видимость управления (в полноэкранном режиме)
+            bool tap = false;
+            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+                tap = true;
+#if ENABLE_INPUT_SYSTEM
+            if (Touchscreen.current != null && Touchscreen.current.primaryTouch.tap.isPressed)
+                tap = true;
+#endif
+            if (tap)
+            {
+                if (_fullscreen)
+                {
+                    ShowControls(!_controlsVisible);
+                    ResetControlsHideTimer();
+                }
+            }
+
+            // Таймер автоскрытия управления в полноэкранном режиме
+            if (_fullscreen && _controlsVisible && _ready)
+            {
+                _controlsHideTimer -= Time.unscaledDeltaTime;
+                if (_controlsHideTimer <= 0f)
+                {
+                    ShowControls(false);
+                }
             }
 
             if (Screen.width != _lastScreen.x || Screen.height != _lastScreen.y || Screen.safeArea != _lastSafeArea)

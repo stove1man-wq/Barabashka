@@ -51,7 +51,7 @@ public sealed class MediaPickTool : IAgentTool
     }
 }
 
-/// <summary>Управление открытым просмотром: дальше, назад, закрыть; для видео ещё пауза, продолжить, перемотка, скорость.</summary>
+/// <summary>Управление открытым просмотром: дальше, назад, закрыть; для видео ещё пауза, продолжить, перемотка, скорость, полноэкранный режим.</summary>
 public sealed class MediaControlTool : IAgentTool
 {
     public string Name { get { return "media_control"; } }
@@ -60,7 +60,7 @@ public sealed class MediaControlTool : IAgentTool
     {
         get
         {
-            return "управлять открытым просмотром. {\"tool\":\"media_control\",\"action\":\"next|prev|close|pause|play|seek|faster|slower\"}; " +
+            return "управлять открытым просмотром. {\"tool\":\"media_control\",\"action\":\"next|prev|close|pause|play|seek|faster|slower|fullscreen|exit_fullscreen\"}; " +
                    "для seek ещё \"seconds\" (минус - назад)";
         }
     }
@@ -89,9 +89,17 @@ public sealed class MediaControlTool : IAgentTool
             case "faster":
                 playback.SetSpeed(1.5f);
                 return ToolResult.Ok("Скорость 1,5x.");
-            default: // slower
+            case "slower":
                 playback.SetSpeed(0.5f);
                 return ToolResult.Ok("Скорость 0,5x.");
+            case "fullscreen":
+                playback.SetFullscreen(true);
+                return ToolResult.Ok("Полноэкранный режим.");
+            case "exit_fullscreen":
+                playback.SetFullscreen(false);
+                return ToolResult.Ok("Выход из полноэкранного режима.");
+            default:
+                return ToolResult.Fail("Не понял команду воспроизведения.");
         }
     }
 
@@ -117,6 +125,8 @@ public sealed class MediaControlTool : IAgentTool
             case "seek":
             case "faster":
             case "slower":
+            case "fullscreen":
+            case "exit_fullscreen":
                 return Task.FromResult(Playback(viewer as IMediaPlayback, action.Trim().ToLowerInvariant(), args));
             default:
                 return Task.FromResult(ToolResult.Fail("Не понял, что сделать с просмотром."));

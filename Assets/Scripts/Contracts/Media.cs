@@ -105,6 +105,10 @@ namespace Barabashka.Contracts
         void SeekBy(double seconds);
         /// <summary>Скорость: 0.5, 1, 1.25, 1.5, 2.</summary>
         void SetSpeed(float speed);
+        /// <summary>Включить/выключить полноэкранный режим.</summary>
+        void SetFullscreen(bool fullscreen);
+        /// <summary>true, если сейчас полноэкранный режим.</summary>
+        bool IsFullscreen { get; }
     }
 
     /// <summary>

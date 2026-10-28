@@ -21,6 +21,8 @@ public static class MediaParser
     private static readonly string[] NextWords = { "дальше", "следующ", "вперед", "далее" };
     private static readonly string[] PrevWords = { "назад", "предыдущ", "обратно" };
     private static readonly string[] CloseWords = { "закрой", "закрыть", "свернуть", "сверни", "выход", "хватит" };
+    private static readonly string[] FullscreenWords = { "весьэкран", "всёэкран", "всьэкран", "полныйэкран", "навесьэкран", "навсёэкран", "навсьэкран", "разверни", "наэкран" };
+    private static readonly string[] ExitFullscreenWords = { "выйтиизполногоэкрана", "выйтиизполноэкрана", "свернивидео", "выходизполного", "закрытьполныйэкран" };
 
     /// <summary>Выбор картинки или видео.</summary>
     public static bool TryPick(string lower, out string command)
@@ -51,7 +53,20 @@ public static class MediaParser
         IMediaPlayback playback = viewer as IMediaPlayback;
         if (playback != null && playback.HasVideo && TryPlayback(w, out command)) return true;
 
-        if (w.Length == 0 || w.Length > 3) return false;
+        if (w.Length == 0 || w.Length > 6) return false;
+
+        // Полноэкранный режим
+        if (HasStem(w, FullscreenWords))
+        {
+            command = Tool("media_control", "action", "fullscreen");
+            return true;
+        }
+        if (HasStem(w, ExitFullscreenWords))
+        {
+            command = Tool("media_control", "action", "exit_fullscreen");
+            return true;
+        }
+
         string action = HasStem(w, NextWords) ? "next" : HasStem(w, PrevWords) ? "prev" : HasStem(w, CloseWords) ? "close" : null;
         if (action == null) return false;
         command = Tool("media_control", "action", action);

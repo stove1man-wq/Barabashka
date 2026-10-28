@@ -95,6 +95,17 @@ public static class ChatIcons
                 };
             case "play":
                 return (x, y) => Mathf.Max(Circle(x, y, 0.5f, 0.5f, 0.46f), -Poly(x, y, PlayCut));
+            case "fullscreen":
+                return (x, y) =>
+                {
+                    // Четыре угла, расширяющиеся наружу (значок полноэкранного режима)
+                    float corner = 0.2f;
+                    float d1 = Mathf.Max(Mathf.Abs(x - corner) - (0.5f - corner), Mathf.Abs(y - corner) - (0.5f - corner));
+                    float d2 = Mathf.Max(Mathf.Abs(x - corner) - (0.5f - corner), Mathf.Abs(y - (1f - corner)) - (0.5f - corner));
+                    float d3 = Mathf.Max(Mathf.Abs(x - (1f - corner)) - (0.5f - corner), Mathf.Abs(y - corner) - (0.5f - corner));
+                    float d4 = Mathf.Max(Mathf.Abs(x - (1f - corner)) - (0.5f - corner), Mathf.Abs(y - (1f - corner)) - (0.5f - corner));
+                    return Mathf.Min(Mathf.Min(d1, d2), Mathf.Min(d3, d4));
+                };
             case "media":
                 return (x, y) =>
                 {
