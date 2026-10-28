@@ -98,13 +98,10 @@ public static class ChatIcons
             case "fullscreen":
                 return (x, y) =>
                 {
-                    // Четыре угла, расширяющиеся наружу (значок полноэкранного режима)
-                    float corner = 0.2f;
-                    float d1 = Mathf.Max(Mathf.Abs(x - corner) - (0.5f - corner), Mathf.Abs(y - corner) - (0.5f - corner));
-                    float d2 = Mathf.Max(Mathf.Abs(x - corner) - (0.5f - corner), Mathf.Abs(y - (1f - corner)) - (0.5f - corner));
-                    float d3 = Mathf.Max(Mathf.Abs(x - (1f - corner)) - (0.5f - corner), Mathf.Abs(y - corner) - (0.5f - corner));
-                    float d4 = Mathf.Max(Mathf.Abs(x - (1f - corner)) - (0.5f - corner), Mathf.Abs(y - (1f - corner)) - (0.5f - corner));
-                    return Mathf.Min(Mathf.Min(d1, d2), Mathf.Min(d3, d4));
+                    // Четыре угловые скобки (значок полноэкранного режима): отражаем точку в левый нижний угол.
+                    float fx = x < 0.5f ? x : 1f - x;
+                    float fy = y < 0.5f ? y : 1f - y;
+                    return Mathf.Min(BoxDist(fx, fy, 0.14f, 0.14f, 0.40f, 0.23f), BoxDist(fx, fy, 0.14f, 0.14f, 0.23f, 0.40f));
                 };
             case "media":
                 return (x, y) =>
@@ -130,6 +127,12 @@ public static class ChatIcons
                     return Mathf.Min(d, RoundRect(x, y, 0.69f, 0.69f, 0.15f, 0.15f, 0.045f));
                 };
         }
+    }
+
+    // Прямоугольник по краям; меньше нуля - внутри.
+    private static float BoxDist(float x, float y, float x0, float y0, float x1, float y1)
+    {
+        return Mathf.Max(Mathf.Max(x0 - x, x - x1), Mathf.Max(y0 - y, y - y1));
     }
 
     private static float Circle(float x, float y, float cx, float cy, float r)

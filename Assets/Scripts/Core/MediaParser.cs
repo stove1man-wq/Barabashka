@@ -21,8 +21,10 @@ public static class MediaParser
     private static readonly string[] NextWords = { "дальше", "следующ", "вперед", "далее" };
     private static readonly string[] PrevWords = { "назад", "предыдущ", "обратно" };
     private static readonly string[] CloseWords = { "закрой", "закрыть", "свернуть", "сверни", "выход", "хватит" };
-    private static readonly string[] FullscreenWords = { "весьэкран", "всёэкран", "всьэкран", "полныйэкран", "навесьэкран", "навсёэкран", "навсьэкран", "разверни", "наэкран" };
-    private static readonly string[] ExitFullscreenWords = { "выйтиизполногоэкрана", "выйтиизполноэкрана", "свернивидео", "выходизполного", "закрытьполныйэкран" };
+    // Полный экран: «на весь экран», «полный экран», «разверни»; выход: «выйти из полного экрана», «закрой полный экран».
+    private static readonly string[] ScreenStems = { "экран" };
+    private static readonly string[] FullStems = { "полн", "весь", "всю", "все" };
+    private static readonly string[] ExitStems = { "выйд", "выйт", "выход", "выключ", "отключ", "убер", "закро", "закры", "сверн", "обратн" };
 
     /// <summary>Выбор картинки или видео.</summary>
     public static bool TryPick(string lower, out string command)
@@ -53,23 +55,29 @@ public static class MediaParser
         IMediaPlayback playback = viewer as IMediaPlayback;
         if (playback != null && playback.HasVideo && TryPlayback(w, out command)) return true;
 
-        if (w.Length == 0 || w.Length > 6) return false;
+        // Полный экран работает только для видео.
+        if (playback != null && playback.HasVideo && TryFullscreen(w, out command)) return true;
 
-        // Полноэкранный режим
-        if (HasStem(w, FullscreenWords))
-        {
-            command = Tool("media_control", "action", "fullscreen");
-            return true;
-        }
-        if (HasStem(w, ExitFullscreenWords))
-        {
-            command = Tool("media_control", "action", "exit_fullscreen");
-            return true;
-        }
+        if (w.Length == 0 || w.Length > 3) return false;
 
         string action = HasStem(w, NextWords) ? "next" : HasStem(w, PrevWords) ? "prev" : HasStem(w, CloseWords) ? "close" : null;
         if (action == null) return false;
         command = Tool("media_control", "action", action);
+        return true;
+    }
+
+    // Полный экран: до 6 слов. Выход проверяется внутри, чтобы «закрой полный экран» не включал его.
+    private static bool TryFullscreen(string[] w, out string command)
+    {
+        command = null;
+        if (w.Length == 0 || w.Length > 6) return false;
+
+        bool expand = w.Length <= 3 && HasStem(w, new[] { "разверни" });
+        bool named = HasStem(w, new[] { "полноэкран" }) || (HasStem(w, ScreenStems) && HasStem(w, FullStems));
+        if (!expand && !named) return false;
+
+        bool exit = named && HasStem(w, ExitStems);
+        command = Tool("media_control", "action", exit ? "exit_fullscreen" : "fullscreen");
         return true;
     }
 

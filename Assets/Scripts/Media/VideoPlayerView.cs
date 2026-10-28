@@ -66,8 +66,6 @@ namespace Barabashka.Media
 
         // Fullscreen state
         private bool _fullscreen;
-        private ScreenOrientation _originalOrientation;
-        private bool _orientationChangeFailed;
         private float _controlsHideTimer;
         private bool _controlsVisible = true;
 
@@ -110,6 +108,8 @@ namespace Barabashka.Media
         public void Close()
         {
             if (!IsOpen) return;
+            // Закрытие из полного экрана (голосом или кнопкой) должно вернуть портрет и системные панели.
+            if (_fullscreen) ExitFullscreen();
             _loadVersion++;
             StopPlayback();
             _root.SetActive(false);
@@ -200,7 +200,7 @@ namespace Barabashka.Media
             scaler.matchWidthOrHeight = 0.5f;
             _root.GetComponent<Image>().color = new Color(0.01f, 0.015f, 0.03f, 1f);
 
-            // Область видео; касание ставит на паузу и снимает её.
+            // Область видео; касание ставит на паузу и снимает её, а в полноэкранном режиме показывает и прячет управление.
             GameObject areaObject = new GameObject("VideoArea", typeof(RectTransform), typeof(Image), typeof(Button), typeof(RectMask2D));
             areaObject.transform.SetParent(_root.transform, false);
             _videoArea = areaObject.GetComponent<RectTransform>();
@@ -208,7 +208,7 @@ namespace Barabashka.Media
             areaImage.color = new Color(0f, 0f, 0f, 0f);
             Button areaButton = areaObject.GetComponent<Button>();
             areaButton.transition = Selectable.Transition.None;
-            areaButton.onClick.AddListener(TogglePlay);
+            areaButton.onClick.AddListener(OnAreaClicked);
 
             GameObject pictureObject = new GameObject("Picture", typeof(RectTransform), typeof(RawImage));
             pictureObject.transform.SetParent(_videoArea, false);
@@ -324,7 +324,7 @@ namespace Barabashka.Media
             _volume.Changed += OnVolumeChanged;
 
             // Полноэкранный режим.
-            _fullscreenButton = MakeButton("Fullscreen", second, VideoArt.Icon("nexttrack"), new Vector2(130f, 130f), out icon);
+            _fullscreenButton = MakeButton("Fullscreen", second, VideoArt.Icon("fullscreen"), new Vector2(130f, 130f), out icon);
             PlaceCenter(_fullscreenButton, 520f);
             _fullscreenButton.onClick.AddListener(ToggleFullscreen);
             _fullscreenButton.GetComponent<Image>().color = white;
@@ -471,8 +471,17 @@ namespace Barabashka.Media
 
             _videoArea.anchorMin = Vector2.zero;
             _videoArea.anchorMax = Vector2.one;
-            _videoArea.offsetMin = new Vector2(0f, ControlsHeight + bottomInset);
-            _videoArea.offsetMax = new Vector2(0f, -(TopBarHeight + topInset));
+            if (_fullscreen)
+            {
+                // Полный экран: видео занимает весь экран (с чёрными полями), управление лежит поверх.
+                _videoArea.offsetMin = Vector2.zero;
+                _videoArea.offsetMax = Vector2.zero;
+            }
+            else
+            {
+                _videoArea.offsetMin = new Vector2(0f, ControlsHeight + bottomInset);
+                _videoArea.offsetMax = new Vector2(0f, -(TopBarHeight + topInset));
+            }
 
             _lastScreen = new Vector2Int(Screen.width, Screen.height);
             _lastSafeArea = safe;
@@ -623,21 +632,17 @@ namespace Barabashka.Media
             if (_fullscreen) return;
             _fullscreen = true;
 
-            // Сохраняем исходную ориентацию и разрешаем автоповорот
-            _originalOrientation = Screen.orientation;
-            _orientationChangeFailed = false;
-
+            // Разрешаем автоповорот; если платформа не даёт, остаёмся в текущей ориентации.
             try
             {
-                Screen.orientation = ScreenOrientation.AutoRotation;
                 Screen.autorotateToLandscapeLeft = true;
                 Screen.autorotateToLandscapeRight = true;
                 Screen.autorotateToPortrait = true;
                 Screen.autorotateToPortraitUpsideDown = false;
+                Screen.orientation = ScreenOrientation.AutoRotation;
             }
             catch (Exception ex)
             {
-                _orientationChangeFailed = true;
                 Debug.LogWarning("[Media] Не удалось включить автоповорот: " + ex.Message);
             }
 
@@ -649,7 +654,22 @@ namespace Barabashka.Media
             ApplyLayout();
 
             // Сбрасываем таймер скрытия управления
+            ShowControls(true);
             ResetControlsHideTimer();
+        }
+
+        // Касание видео: в полном экране показывает или прячет управление, иначе пауза/продолжение.
+        private void OnAreaClicked()
+        {
+            if (_fullscreen)
+            {
+                ShowControls(!_controlsVisible);
+                ResetControlsHideTimer();
+            }
+            else
+            {
+                TogglePlay();
+            }
         }
 
         private void ExitFullscreen()
@@ -791,8 +811,10 @@ namespace Barabashka.Media
         {
             if (!IsOpen) return;
 
-            // Android Back кнопка/жест: в полноэкранном режиме выходит из него, иначе закрывает плеер
-            if (Input.GetKeyDown(KeyCode.Escape))
+            // Android Back (кнопка или жест) приходит как Escape в новой системе ввода:
+            // в полном экране выходит из него, иначе закрывает плеер.
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
             {
                 if (_fullscreen)
                 {
@@ -803,22 +825,9 @@ namespace Barabashka.Media
                 return;
             }
 
-            // Тап по экрану: переключает видимость управления (в полноэкранном режиме)
-            bool tap = false;
-            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-                tap = true;
-#if ENABLE_INPUT_SYSTEM
-            if (Touchscreen.current != null && Touchscreen.current.primaryTouch.tap.isPressed)
-                tap = true;
-#endif
-            if (tap)
-            {
-                if (_fullscreen)
-                {
-                    ShowControls(!_controlsVisible);
-                    ResetControlsHideTimer();
-                }
-            }
+            // Любое касание в полном экране продлевает показ управления.
+            if (_fullscreen && Pointer.current != null && Pointer.current.press.wasPressedThisFrame)
+                ResetControlsHideTimer();
 
             // Таймер автоскрытия управления в полноэкранном режиме
             if (_fullscreen && _controlsVisible && _ready)

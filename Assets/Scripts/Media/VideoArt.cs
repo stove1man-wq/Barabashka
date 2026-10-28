@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Barabashka.Media
 {
     /// <summary>
-    /// Значки видеоплеера, рисуются кодом: "play", "pause", "prev", "nexttrack", "rew", "fwd", "speaker".
+    /// Значки видеоплеера, рисуются кодом: "play", "pause", "prev", "nexttrack", "rew", "fwd", "speaker", "fullscreen".
     /// Белые на прозрачном, цвет задаётся через Image.color.
     /// </summary>
     internal static class VideoArt
@@ -64,6 +64,13 @@ namespace Barabashka.Media
                     return Tri(x, y, 0.50f, 0.38f, 0.50f, 0.80f, 0.14f, 0.59f) || Tri(x, y, 0.86f, 0.38f, 0.86f, 0.80f, 0.50f, 0.59f);
                 case "fwd":
                     return Tri(x, y, 0.14f, 0.38f, 0.14f, 0.80f, 0.50f, 0.59f) || Tri(x, y, 0.50f, 0.38f, 0.50f, 0.80f, 0.86f, 0.59f);
+                case "fullscreen":
+                {
+                    // Четыре угловые скобки: отражаем точку в левый нижний угол и рисуем одну скобку.
+                    float fx = x < 0.5f ? x : 1f - x;
+                    float fy = y < 0.5f ? y : 1f - y;
+                    return Box(fx, fy, 0.14f, 0.14f, 0.40f, 0.23f) || Box(fx, fy, 0.14f, 0.14f, 0.23f, 0.40f);
+                }
                 case "speaker":
                 {
                     if (Box(x, y, 0.12f, 0.38f, 0.32f, 0.62f)) return true;

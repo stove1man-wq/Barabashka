@@ -77,5 +77,9 @@ namespace Barabashka.Media
         public void SeekBy(double seconds) { if (HasVideo) _video.SeekBy(seconds); }
 
         public void SetSpeed(float speed) { if (HasVideo) _video.SetSpeed(speed); }
+
+        public bool IsFullscreen { get { return HasVideo && _video.IsFullscreen; } }
+
+        public void SetFullscreen(bool fullscreen) { if (HasVideo) _video.SetFullscreen(fullscreen); }
     }
 }

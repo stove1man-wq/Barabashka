@@ -217,6 +217,7 @@ public partial class AgentUIManager
         frameLayout.flexibleWidth = 1f;
 
         bool isVideo = item.Kind == Barabashka.Contracts.MediaKind.Video;
+        long id = rec.Id;
         Texture2D texture = ChatThumbnails.Load(item, 512);
         Image picture = CreateImage("Picture", frame.transform, Color.white);
         picture.raycastTarget = false;
@@ -256,6 +257,7 @@ public partial class AgentUIManager
 
             // Кнопка «на весь экран» в углу миниатюры.
             Button fullscreenBtn = CreateButton("FullscreenBadge", frame.transform, string.Empty, new Color(0f, 0f, 0f, 0f), 1);
+            Place(fullscreenBtn.GetComponent<RectTransform>(), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-92f, -92f), new Vector2(-10f, -10f));
             Image fullscreenIcon = CreateImage("FullscreenIcon", fullscreenBtn.transform, new Color(1f, 1f, 1f, 0.92f));
             fullscreenIcon.sprite = ChatIcons.Get("fullscreen");
             fullscreenIcon.preserveAspect = true;
@@ -272,7 +274,6 @@ public partial class AgentUIManager
 
         Button button = frame.gameObject.AddComponent<Button>();
         button.targetGraphic = frame;
-        long id = rec.Id;
         button.onClick.AddListener(() => OpenMedia(id));
     }
 
