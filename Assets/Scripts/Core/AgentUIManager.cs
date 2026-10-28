@@ -231,7 +231,7 @@ public partial class AgentUIManager : MonoBehaviour
         attachmentRect.anchorMax = new Vector2(0.86f, 0.78f);
         attachmentRect.offsetMin = Vector2.zero;
         attachmentRect.offsetMax = Vector2.zero;
-        attachmentButton.onClick.AddListener(() => SetStatus("Вложения будут добавлены отдельным этапом"));
+        attachmentButton.onClick.AddListener(ToggleAttachMenu);
 
         Button sendButton = CreateButton("SendButton", inputPanel.transform, "↑",
             new Color(0.12f, 0.48f, 0.82f, 1f), 34);
