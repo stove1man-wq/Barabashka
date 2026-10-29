@@ -34,6 +34,22 @@ public partial class AgentUIManager
     private ChatKind _filterKind;
     private Button _undoButton;
     private Coroutine _undoTimer;
+    
+    // --- Новые элементы для режима настроек ---
+    private GameObject _settingsBackButtonObject;
+    private RectTransform _settingsPanel;
+    private GameObject _settingsTitleBackground;
+    private Text _settingsTitleText;
+    private RectTransform _settingsContentArea;
+    private Button _settingsBackButton;
+    
+    // Режим настроек в чате
+    private bool _settingsMode;
+    private string _currentSettingsPageId;
+    private readonly List<GameObject> _settingsWidgets = new List<GameObject>();
+    private readonly List<string> _settingsConfirmations = new List<string>();
+
+    // ---- построение ----
 
     // ---- построение ----
 
@@ -50,7 +66,18 @@ public partial class AgentUIManager
             float x1 = 0.05f + 0.75f * (i + 1) / total;
             Place(button.GetComponent<RectTransform>(), new Vector2(x0, 0.783f), new Vector2(x1, 0.818f),
                 new Vector2(3f, 0f), new Vector2(-3f, 0f));
-            button.onClick.AddListener(() => SelectTab(index));
+            
+            // Особая обработка для кнопки System (последняя кнопка)
+            if (i > 0 && ChatKinds.All[i - 1] == ChatKind.System)
+            {
+                // Для кнопки System открытие режима настроек вместо фильтрации
+                button.onClick.AddListener(() => ShowSettings());
+            }
+            else
+            {
+                button.onClick.AddListener(() => SelectTab(index));
+            }
+            
             AddTabIcon(button, i == 0 ? "all" : ChatKinds.All[i - 1].ToString().ToLowerInvariant());
             _tabButtons[i] = button;
         }
@@ -126,6 +153,12 @@ public partial class AgentUIManager
 
     private void SelectTab(int index)
     {
+        if (_settingsMode)
+        {
+            // В режиме настроек не фильтруем чат, а сохраняем исходное состояние фильтра
+            return;
+        }
+        
         if (index == 0) { _filterAll = true; }
         else { _filterAll = false; _filterKind = ChatKinds.All[index - 1]; _unread[index - 1] = false; }
         ApplyFilter();
