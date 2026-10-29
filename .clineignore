@@ -19,3 +19,26 @@ ProjectSettings/
 *.aab
 *.patch
 *.gguf
+
+# Лишнее для агента: примеры пакетов, нативные библиотеки, бинарные ресурсы
+Assets/Samples/
+Assets/Plugins/Android/libs/
+Assets/StreamingAssets/
+Assets/Settings/
+Assets/Scenes/
+Assets/_Recovery/
+*.png
+*.jpg
+*.jpeg
+*.fbx
+*.mp4
+*.wav
+*.onnx
+*.dll
+*.so
+*.aar
+*.jar
+*.ttf
+*.otf
+*.inputactions
+*.log
