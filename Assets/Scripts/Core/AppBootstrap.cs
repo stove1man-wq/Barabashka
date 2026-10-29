@@ -1,7 +1,20 @@
+using Barabashka.Contracts;
+using Barabashka.Core.Settings;
 using UnityEngine;
 
 public static class AppBootstrap
 {
+    // Страницы настроек регистрируются до загрузки сцены, чтобы интерфейс видел их сразу.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void RegisterSettingsPages()
+    {
+        SettingsRegistry.Register(new VoicePage());
+        SettingsRegistry.Register(new ModelsPage());
+        SettingsRegistry.Register(new SecurityPage());
+        SettingsRegistry.Register(new ChatPage());
+        SettingsRegistry.Register(new GeneralPage());
+    }
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     public static void InitializeApplication()
     {

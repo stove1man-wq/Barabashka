@@ -71,27 +71,27 @@ namespace Barabashka.Contracts
     public static class SettingsRegistry
     {
         private static readonly List<ISettingsPage> _pages = new List<ISettingsPage>();
-        private static bool _locked;
 
-        /// <summary>Зарегистрировать страницу. После первого вызова BuildPages список замораживается.</summary>
+        /// <summary>Список страниц изменился (зарегистрирована новая): интерфейс может перестроить кнопки.</summary>
+        public static event Action PagesChanged;
+
+        /// <summary>
+        /// Зарегистрировать страницу. Модули (MAX, такси, сервер меток) могут добавлять свои страницы в любой момент.
+        /// Страница с тем же Id заменяет прежнюю.
+        /// </summary>
         public static void Register(ISettingsPage page)
         {
-            if (_locked) throw new InvalidOperationException("SettingsRegistry already locked");
             if (page == null) throw new ArgumentNullException(nameof(page));
             if (string.IsNullOrEmpty(page.Id)) throw new ArgumentException("Page Id cannot be empty");
+            _pages.RemoveAll(p => string.Equals(p.Id, page.Id, StringComparison.OrdinalIgnoreCase));
             _pages.Add(page);
+            _pages.Sort((a, b) => a.Order.CompareTo(b.Order));
+            Action handler = PagesChanged;
+            if (handler != null) handler();
         }
 
         /// <summary>Все страницы, отсортированные по Order.</summary>
-        public static IReadOnlyList<ISettingsPage> Pages
-        {
-            get
-            {
-                _locked = true;
-                _pages.Sort((a, b) => a.Order.CompareTo(b.Order));
-                return _pages;
-            }
-        }
+        public static IReadOnlyList<ISettingsPage> Pages { get { return _pages; } }
 
         /// <summary>Найти страницу по Id или по одному из Aliases (без учёта регистра).</summary>
         public static ISettingsPage Find(string idOrAlias)
@@ -114,7 +114,7 @@ namespace Barabashka.Contracts
         public static void ResetForTests()
         {
             _pages.Clear();
-            _locked = false;
+            PagesChanged = null;
         }
     }
 }

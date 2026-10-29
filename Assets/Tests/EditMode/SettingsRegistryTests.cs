@@ -30,6 +30,20 @@ namespace Barabashka.Tests
         }
 
         [Test]
+        public void Register_SameId_ReplacesPage_AndLateRegistrationWorks()
+        {
+            SettingsRegistry.Register(new VoicePage());
+            SettingsRegistry.Register(new VoicePage());
+            Assert.That(SettingsRegistry.Pages.Count, Is.EqualTo(1));
+
+            int changes = 0;
+            SettingsRegistry.PagesChanged += () => changes++;
+            SettingsRegistry.Register(new ModelsPage());   // после первого чтения Pages регистрация всё ещё работает
+            Assert.That(SettingsRegistry.Pages.Count, Is.EqualTo(2));
+            Assert.That(changes, Is.EqualTo(1));
+        }
+
+        [Test]
         public void Find_ById_ReturnsPage()
         {
             SettingsRegistry.Register(new VoicePage());
