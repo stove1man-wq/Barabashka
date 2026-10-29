@@ -48,3 +48,6 @@ Thumbs.db
 # LLMUnity native libraries (several GB, downloaded by the package)
 /Assets/StreamingAssets/LlamaLib*
 /cleanup*.ps1
+
+# Временные файлы сборки Android (CMake/Ninja)
+/.utmp/
