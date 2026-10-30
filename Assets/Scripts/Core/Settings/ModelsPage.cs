@@ -57,7 +57,31 @@ namespace Barabashka.Core.Settings
 
         public bool TryVoice(string normalized, out string reply)
         {
-            reply = null; return false;
+            reply = null;
+            if (string.IsNullOrEmpty(normalized))
+                return false;
+
+            // Команды включения/выключения умных ответов
+            if (normalized.Contains("включи умные ответы") || normalized.Contains("включить умные ответы"))
+            {
+                reply = "Умные ответы включены";
+                return true;
+            }
+            
+            if (normalized.Contains("выключи умные ответы") || normalized.Contains("выключить умные ответы"))
+            {
+                reply = "Умные ответы выключены";
+                return true;
+            }
+
+            // Команды включения модели в телефоне
+            if (normalized.Contains("включи модель в телефоне") || normalized.Contains("включить модель в телефоне"))
+            {
+                reply = "Модель в телефоне включена";
+                return true;
+            }
+            
+            return false;
         }
 
         private static string ValidateAndSaveOllamaUrl(string v)

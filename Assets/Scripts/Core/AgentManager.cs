@@ -155,11 +155,9 @@ public class AgentManager : MonoBehaviour
                 AgentActivityBus.PublishResting();
                 return;
             }
-            if (WantsSettings(message))
+            if (SettingsVoice.TryHandle(message, _uiManager?.SettingsMode ?? false, _uiManager))
             {
-                _uiManager.AddUserMessage(message);
-                ChatKinds.Set(ChatKind.System);
-                _uiManager.ShowSettings();
+                // Команда обработана голосовым обработчиком настроек
                 AgentActivityBus.PublishResting();
                 return;
             }
