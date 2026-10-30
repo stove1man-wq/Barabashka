@@ -4,6 +4,7 @@
     "references": [
         "Barabashka.Core",
         "Barabashka.Contracts",
+        "Barabashka.TaxiProviders",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

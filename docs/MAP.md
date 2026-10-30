@@ -18,6 +18,7 @@
 - Политика и возможности: `ActionPolicy.cs`, `ActionGate.cs`, `CapabilityRegistry.cs`, `AppSettings.cs`.
 - Настройки: `Core/Settings/*Page.cs` (страницы), реестр в `Contracts/Settings.cs`.
 - Старт: `Core/AppBootstrap.cs`, `Core/AgentManager.cs`.
+- Такси: `Core/Taxi/` (`TaxiParser` разбор фраз, `TaxiTools` инструменты, `AgentGeocoder` адрес -> координаты, `TaxiSettings`), операторы в `TaxiProviders/`, страница настроек `Core/Settings/TaxiPage.cs`, контракт `Contracts/Taxi.cs`.
 
 ## Остальные блоки
 - `Contracts/` - интерфейсы между блоками (без Unity-зависимостей).

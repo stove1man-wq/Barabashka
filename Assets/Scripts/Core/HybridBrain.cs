@@ -207,6 +207,8 @@ public sealed class HybridBrain : IBrain
     private static readonly Dictionary<string, string[]> ToolWords = new Dictionary<string, string[]>
     {
         { "time", new[] { "врем", "час", "котор" } },
+        { "taxi_call", new[] { "такси", "яндекс", "ситимоб", "максим", "драйв", "drive", "вызов", "закаж" } },
+        { "taxi_set_place", new[] { "дом", "работ", "адрес" } },
         { "media_pick", new[] { "фото", "картинк", "изображ", "снимк", "видео", "ролик", "фильм" } },
         { "media_control", new[] { "дальше", "следующ", "назад", "предыдущ", "закр", "свер", "пауз", "продолж", "перемот", "скорост", "секунд" } },
         { "date", new[] { "дат", "числ", "день", "какой", "сегодня", "завтра" } },

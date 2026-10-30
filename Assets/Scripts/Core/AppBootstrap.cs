@@ -10,6 +10,7 @@ public static class AppBootstrap
     {
         SettingsRegistry.Register(new VoicePage());
         SettingsRegistry.Register(new ModelsPage());
+        SettingsRegistry.Register(new TaxiPage());
         SettingsRegistry.Register(new SecurityPage());
         SettingsRegistry.Register(new ChatPage());
         SettingsRegistry.Register(new GeneralPage());

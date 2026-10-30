@@ -110,6 +110,16 @@ public static class ChatIcons
                     float tick = Mathf.Min(Segment(x, y, 0.37f, 0.52f, 0.46f, 0.41f, 0.035f), Segment(x, y, 0.46f, 0.41f, 0.64f, 0.65f, 0.035f));
                     return Mathf.Max(d, -tick);
                 };
+            case "taxi":
+                // Машина с шашечкой на крыше и окном.
+                return (x, y) =>
+                {
+                    float d = Mathf.Min(RoundRect(x, y, 0.5f, 0.40f, 0.38f, 0.11f, 0.04f), RoundRect(x, y, 0.5f, 0.56f, 0.25f, 0.10f, 0.05f));
+                    d = Mathf.Min(d, RoundRect(x, y, 0.5f, 0.72f, 0.07f, 0.035f, 0.01f));
+                    d = Mathf.Min(d, Circle(x, y, 0.28f, 0.27f, 0.10f));
+                    d = Mathf.Min(d, Circle(x, y, 0.72f, 0.27f, 0.10f));
+                    return Mathf.Max(d, -RoundRect(x, y, 0.5f, 0.57f, 0.17f, 0.045f, 0.02f));
+                };
             case "settings":
             case "system":
                 return (x, y) =>

@@ -46,6 +46,9 @@ Notifications-> Contracts                        уведомления Android 
 Статус: приостановлен и необязателен (создание приложения на my.telegram.org блокируется, а доступность Telegram из России без VPN под вопросом). Основной мессенджер - MAX, см. `docs/MESSENGERS.md`. Код ниже сохраняется как провайдер `telegram-tdlib`; при подключении сразу настраивается прокси (в TDLib есть поддержка MTProto и SOCKS5).
 `TelegramClient` работает с TDLib (`TdJson`, нативная `libtdjson.so`, собирается workflow `.github/workflows/build-tdlib-android.yml`): поток приёма, запросы с `@extra`, состояния входа, чаты, чтение истории, отправка с проверкой доставки. `TelegramConnector` показывает состояние в `/подключения`; `telegram_read` требует этого коннектора. Подробнее: `docs/TELEGRAM.md`.
 
+## Такси
+Агент готовит поездку, но не заказывает: открывает приложение оператора, «Заказать» нажимает человек. `ITaxiProvider` (`Contracts/Taxi.cs`), операторы в сборке `Barabashka.TaxiProviders`: Яндекс Go (официальная ссылка маршрута `3.redirect.appmetrica.yandex.com/route`, принимает только координаты), Ситимобил, Максим, inDrive (пока открывается только приложение, адрес кладётся в буфер). Адрес словами превращается в координаты через OpenStreetMap Nominatim (`AgentGeocoder`; наружу уходит только текст адреса, к нему добавляется город по умолчанию); без сети такси открывается без маршрута. Дом и работа хранятся в `PlayerPrefs`, координаты кэшируются. Разбор фраз `TaxiParser` стоит в `IsolatedBrain` раньше звонков («вызови» там тоже глагол звонка) и пропускает фразы про звонки, сообщения, задачи и напоминания. Новый оператор = класс `ITaxiProvider` и строка в `TaxiProviderRegistry`.
+
 ## Медиа
 Просмотр картинок и видео, источники и выбор файлов: `docs/MEDIA.md`. В `Contracts` лежат только интерфейсы (`IMediaViewer`, `IMediaSource`, `IMediaPicker`) и `MediaItem`; реализация в сборке `Barabashka.Media`, подключается в `Composition` через `MediaServices`.
 

@@ -137,6 +137,12 @@ public static class PhoneActions
         return best;
     }
 
+    /// <summary>Запустить уже найденное приложение (для других блоков, например такси).</summary>
+    public static string Launch(AppEntry app)
+    {
+        return app == null ? "Приложение не найдено." : LaunchApp(app);
+    }
+
     /// <summary>Открыть приложение по названию; если такого приложения нет, но это известный сайт - открыть сайт.</summary>
     public static string OpenApp(string spokenName)
     {

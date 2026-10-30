@@ -111,7 +111,7 @@ public static class ChatKinds
         if (id.StartsWith("task_", StringComparison.Ordinal) || id.StartsWith("note_", StringComparison.Ordinal) ||
             id.StartsWith("reminder_", StringComparison.Ordinal) || id.StartsWith("alarm_", StringComparison.Ordinal))
             return ChatKind.Notes;
-        if (id.StartsWith("marketplace_", StringComparison.Ordinal))
+        if (id.StartsWith("marketplace_", StringComparison.Ordinal) || id.StartsWith("taxi_", StringComparison.Ordinal))
             return ChatKind.Purchases;
         if (id.StartsWith("media_", StringComparison.Ordinal))
             return ChatKind.Media;

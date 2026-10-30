@@ -48,6 +48,12 @@ public class IsolatedBrain : IAgentBrain
         if (MediaParser.TryPick(lower, out mediaCommand))
             return Task.FromResult("COMMAND:" + mediaCommand);
 
+        // Такси («вызови такси до вокзала», «такси домой», «мой дом Тверская 1»): раньше звонков («вызови» там тоже глагол звонка),
+        // погоды, заметок и задач («нужно такси» не задача). Фразы про звонки и сообщения парсер такси сам пропускает.
+        string taxiCommand;
+        if (!IsRefusal(lower) && TaxiParser.TryHandle(lower, out taxiCommand))
+            return Task.FromResult("COMMAND:" + taxiCommand);
+
         // Звонки и сообщения людям из контактов: раньше напоминаний, чтобы «напиши, что буду через 5 минут» не стало таймером.
         string contactCommand;
         if (!IsRefusal(lower) && AgentPhoneParser.TryContactAction(lowerNum, lower, out contactCommand))
