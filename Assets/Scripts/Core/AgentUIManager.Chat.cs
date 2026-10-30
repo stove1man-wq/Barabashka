@@ -34,22 +34,7 @@ public partial class AgentUIManager
     private ChatKind _filterKind;
     private Button _undoButton;
     private Coroutine _undoTimer;
-    
-    // --- Новые элементы для режима настроек ---
-    private GameObject _settingsBackButtonObject;
-    private RectTransform _settingsPanel;
-    private GameObject _settingsTitleBackground;
-    private Text _settingsTitleText;
-    private RectTransform _settingsContentArea;
-    private Button _settingsBackButton;
-    
-    // Режим настроек в чате
-    private bool _settingsMode;
-    private string _currentSettingsPageId;
-    private readonly List<GameObject> _settingsWidgets = new List<GameObject>();
-    private readonly List<string> _settingsConfirmations = new List<string>();
-
-    // ---- построение ----
+    private readonly string[] _tabIconIds = new string[ChatKinds.Count + 1];
 
     // ---- построение ----
 
@@ -66,19 +51,12 @@ public partial class AgentUIManager
             float x1 = 0.05f + 0.75f * (i + 1) / total;
             Place(button.GetComponent<RectTransform>(), new Vector2(x0, 0.783f), new Vector2(x1, 0.818f),
                 new Vector2(3f, 0f), new Vector2(-3f, 0f));
-            
-            // Особая обработка для кнопки System (последняя кнопка)
-            if (i > 0 && ChatKinds.All[i - 1] == ChatKind.System)
-            {
-                // Для кнопки System открытие режима настроек вместо фильтрации
-                button.onClick.AddListener(() => ShowSettings());
-            }
-            else
-            {
-                button.onClick.AddListener(() => SelectTab(index));
-            }
-            
-            AddTabIcon(button, i == 0 ? "all" : ChatKinds.All[i - 1].ToString().ToLowerInvariant());
+            // Шестерёнка (раздел System) включает режим настроек, остальные кнопки фильтруют чат.
+            button.onClick.AddListener(() => OnTabClicked(index));
+
+            string iconId = i == 0 ? "all" : ChatKinds.All[i - 1].ToString().ToLowerInvariant();
+            AddTabIcon(button, iconId);
+            _tabIconIds[i] = iconId;
             _tabButtons[i] = button;
         }
         RefreshTabs();
@@ -125,6 +103,7 @@ public partial class AgentUIManager
 
     private void RefreshTabs()
     {
+        if (_settingsMode) { RefreshSettingsTabs(); return; }
         for (int i = 0; i < _tabButtons.Length; i++)
         {
             Button button = _tabButtons[i];
@@ -140,7 +119,7 @@ public partial class AgentUIManager
             {
                 ChatKind kind = ChatKinds.All[i - 1];
                 color = selected ? ChatKinds.Tab(kind) : Color.Lerp(ChatKinds.Bubble(kind, true), ChatKinds.Tab(kind), 0.35f);
-                hasUnread = _unread[i - 1] && !selected;
+                hasUnread = _unread[(int)kind] && kind != ChatKind.System && !selected;
             }
             SetButtonColor(button, color);
 
@@ -153,14 +132,8 @@ public partial class AgentUIManager
 
     private void SelectTab(int index)
     {
-        if (_settingsMode)
-        {
-            // В режиме настроек не фильтруем чат, а сохраняем исходное состояние фильтра
-            return;
-        }
-        
         if (index == 0) { _filterAll = true; }
-        else { _filterAll = false; _filterKind = ChatKinds.All[index - 1]; _unread[index - 1] = false; }
+        else { _filterAll = false; _filterKind = ChatKinds.All[index - 1]; _unread[(int)_filterKind] = false; }
         ApplyFilter();
     }
 
@@ -560,6 +533,9 @@ public partial class AgentUIManager
                        "Сообщение можно смахнуть вправо.";
 
             case ChatCmd.Section:
+                // «Раздел система / настройки» открывает режим настроек (у раздела System нет своей ленты-фильтра).
+                if (c.HasKind && c.Kind == ChatKind.System) { ShowSettings(); return "Открываю настройки"; }
+                if (_settingsMode) ExitSettingsMode();
                 if (!_fullMode) SetMode(true);
                 if (c.HasKind) { _filterAll = false; _filterKind = c.Kind; _unread[(int)c.Kind] = false; }
                 else _filterAll = true;

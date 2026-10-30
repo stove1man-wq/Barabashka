@@ -19,6 +19,8 @@ public static class ChatIcons
     private static readonly float[] PlaneWing2 = { 0.92f, 0.86f, 0.62f, 0.12f, 0.46f, 0.34f };
     private static readonly float[] PlayCut = { 0.40f, 0.29f, 0.40f, 0.71f, 0.73f, 0.50f };
     private static readonly float[] MediaPlay = { 0.43f, 0.37f, 0.43f, 0.63f, 0.64f, 0.50f };
+    private static readonly float[] SpeakerCone = { 0.32f, 0.38f, 0.52f, 0.24f, 0.52f, 0.76f, 0.32f, 0.62f };
+    private static readonly float[] ShieldTip = { 0.22f, 0.50f, 0.78f, 0.50f, 0.50f, 0.10f };
     private static readonly float[] CartBasket = { 0.30f, 0.40f, 0.84f, 0.40f, 0.92f, 0.68f, 0.26f, 0.68f };
 
     public static Sprite Get(string id)
@@ -57,6 +59,7 @@ public static class ChatIcons
     {
         switch (id)
         {
+            case "chat":
             case "dialog":
                 return (x, y) =>
                 {
@@ -82,6 +85,32 @@ public static class ChatIcons
                 };
             case "telegram":
                 return (x, y) => Mathf.Min(Poly(x, y, PlaneWing1), Poly(x, y, PlaneWing2));
+            case "volume":
+                // Динамик: корпус, раструб и две дуги звука справа.
+                return (x, y) =>
+                {
+                    float d = Mathf.Min(RoundRect(x, y, 0.27f, 0.50f, 0.09f, 0.11f, 0.02f), Poly(x, y, SpeakerCone));
+                    float wave1 = Mathf.Max(Mathf.Abs(Circle(x, y, 0.50f, 0.50f, 0.21f)) - 0.035f, Mathf.Max(0.60f - x, Mathf.Abs(y - 0.5f) - 0.20f));
+                    float wave2 = Mathf.Max(Mathf.Abs(Circle(x, y, 0.50f, 0.50f, 0.34f)) - 0.035f, Mathf.Max(0.63f - x, Mathf.Abs(y - 0.5f) - 0.30f));
+                    return Mathf.Min(d, Mathf.Min(wave1, wave2));
+                };
+            case "brain":
+                // Лампочка («умные ответы»): колба, цоколь и основание с зазором.
+                return (x, y) =>
+                {
+                    float d = Mathf.Min(Circle(x, y, 0.5f, 0.60f, 0.28f), RoundRect(x, y, 0.5f, 0.34f, 0.13f, 0.10f, 0.03f));
+                    d = Mathf.Max(d, -RoundRect(x, y, 0.5f, 0.245f, 0.30f, 0.012f, 0f));
+                    return Mathf.Min(d, RoundRect(x, y, 0.5f, 0.15f, 0.10f, 0.04f, 0.02f));
+                };
+            case "shield":
+                // Щит с галочкой («действия агента»).
+                return (x, y) =>
+                {
+                    float d = Mathf.Min(RoundRect(x, y, 0.5f, 0.62f, 0.28f, 0.24f, 0.04f), Poly(x, y, ShieldTip));
+                    float tick = Mathf.Min(Segment(x, y, 0.37f, 0.52f, 0.46f, 0.41f, 0.035f), Segment(x, y, 0.46f, 0.41f, 0.64f, 0.65f, 0.035f));
+                    return Mathf.Max(d, -tick);
+                };
+            case "settings":
             case "system":
                 return (x, y) =>
                 {

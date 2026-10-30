@@ -21,9 +21,10 @@ public static class ChatKinds
 {
     public const int Count = 7;
 
+    // Порядок кнопок в ряду. Шестерёнка (System) последняя: она включает режим настроек. Числа enum не меняем (история чата).
     public static readonly ChatKind[] All =
     {
-        ChatKind.Dialog, ChatKind.Phone, ChatKind.Notes, ChatKind.Telegram, ChatKind.System, ChatKind.Purchases, ChatKind.Media
+        ChatKind.Dialog, ChatKind.Phone, ChatKind.Notes, ChatKind.Telegram, ChatKind.Media, ChatKind.Purchases, ChatKind.System
     };
 
     /// <summary>Раздел текущего хода (начинается с каждым новым сообщением человека).</summary>
