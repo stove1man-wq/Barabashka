@@ -14,6 +14,7 @@ public static class AppBootstrap
         SettingsRegistry.Register(new SecurityPage());
         SettingsRegistry.Register(new ChatPage());
         SettingsRegistry.Register(new GeneralPage());
+        SettingsRegistry.Register(new MessengersPage());
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
