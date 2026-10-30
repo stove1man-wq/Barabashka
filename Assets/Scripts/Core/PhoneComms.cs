@@ -209,6 +209,46 @@ public static class PhoneComms
         return false;
     }
 
+    /// <summary>Открыть чат в MAX с готовым текстом.</summary>
+    public static string OpenMaxComposer(string text)
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        try
+        {
+            // Копируем текст в буфер обмена
+            using (var clipboardClass = new AndroidJavaClass("android.content.ClipboardManager"))
+            using (var activity = GetCurrentActivity())
+            {
+                var clipboard = clipboardClass.GetStatic<AndroidJavaObject>("clipboard");
+                var clipData = new AndroidJavaObject("android.content.ClipData", 
+                    new AndroidJavaObject("android.content.ClipData.Item", text));
+                clipboard.Call("setPrimaryClip", clipData);
+            }
+
+            // Открываем MAX с Intent
+            using (var intent = new AndroidJavaObject("android.content.Intent"))
+            using (var activity = GetCurrentActivity())
+            {
+                intent.Call<AndroidJavaObject>("setAction", "android.intent.action.SEND");
+                intent.Call<AndroidJavaObject>("setType", "text/plain");
+                intent.Call<AndroidJavaObject>("putExtra", "android.intent.extra.TEXT", text);
+                intent.Call<AndroidJavaObject>("setPackage", "ru.oneme.app");
+                intent.Call<AndroidJavaObject>("addFlags", 0x00000001); // FLAG_ACTIVITY_NEW_TASK
+                activity.Call("startActivity", intent);
+            }
+
+            return "Открываю MAX с готовым текстом. Пожалуйста, отправьте сообщение вручную.";
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[Phone] Открытие MAX: " + ex.Message);
+            return "Не удалось открыть приложение MAX. Пожалуйста, откройте его вручную и вставьте текст.";
+        }
+#else
+        return "Открываю чат в MAX (на телефоне будет доступно).";
+#endif
+    }
+
     // SmsManager.sendMultipartTextMessage принимает null (отчёты о доставке не нужны), а Unity не умеет передавать null в Call, поэтому прямой вызов JNI.
     private static void SendSmsPlatform(string number, string text)
     {

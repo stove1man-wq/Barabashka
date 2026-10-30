@@ -211,6 +211,8 @@ public static class AgentPhoneParser
             word.StartsWith("вотсап", StringComparison.Ordinal) || word.StartsWith("whatsapp", StringComparison.Ordinal)) return "whatsapp";
         if (word.StartsWith("смс", StringComparison.Ordinal) || word.StartsWith("смск", StringComparison.Ordinal) ||
             word.StartsWith("эсэмэс", StringComparison.Ordinal) || word.StartsWith("sms", StringComparison.Ordinal)) return "sms";
+        // Добавляем поддержку "макс" и "max"
+        if (word.StartsWith("макс", StringComparison.Ordinal) || word.StartsWith("max", StringComparison.Ordinal)) return "max";
         return null;
     }
 
