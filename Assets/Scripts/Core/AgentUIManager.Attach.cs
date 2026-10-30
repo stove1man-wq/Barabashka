@@ -39,7 +39,8 @@ public partial class AgentUIManager
         AddAttachItem(panel.transform, "Документ", 2, () =>
         {
             _attachMenu.SetActive(false);
-            SetStatus("Документы добавим следующим этапом");
+            // Вызов выбора документа через системное окно
+            StartCoroutine(PickDocumentAsync());
         });
     }
 
@@ -55,5 +56,67 @@ public partial class AgentUIManager
     {
         _attachMenu.SetActive(false);
         if (_agentManager != null) _agentManager.SendUserMessage(phrase);
+    }
+
+    private System.Collections.IEnumerator PickDocumentAsync()
+    {
+        var ct = new CancellationTokenSource();
+        var result = MediaServices.Picker.PickAsync(MediaKind.Document, true, ct.Token);
+        yield return new WaitUntil(() => result.IsCompleted);
+        var items = result.Result;
+        if (items != null && items.Count > 0)
+        {
+            foreach (var item in items)
+            {
+                // Копируем файл в папку InboxFolder/documents
+                CopyDocumentToInbox(item);
+                // Отправляем в чат карточку документа
+                SendDocumentCardToChat(item);
+            }
+        }
+    }
+
+    private void CopyDocumentToInbox(MediaItem item)
+    {
+        // Имитация копирования документа в папку InboxFolder/documents
+        // Проверим что это локальный файл
+        if (item.Uri.StartsWith("file://"))
+        {
+            try
+            {
+                string localPath = new Uri(item.Uri).LocalPath;
+                string fileName = item.Title;
+                string safeFileName = MakeSafeFileName(fileName);
+                string destinationPath = Path.Combine(MediaPicker.InboxFolder, "documents", safeFileName);
+                
+                // Создаем директорию если не существует
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
+                
+                // Копируем файл (в реальной реализации это должно быть через Android)
+                File.Copy(localPath, destinationPath, true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Docs] Ошибка копирования документа: " + ex.Message);
+            }
+        }
+    }
+
+    private void SendDocumentCardToChat(MediaItem item)
+    {
+        // Создаем карточку документа для чата
+        string card = MediaItem.Encode(item) + "&src=document&kind=2";
+        if (_agentManager != null)
+        {
+            _agentManager.EnqueueSystemMessage(card, "document");
+        }
+    }
+
+    private string MakeSafeFileName(string fileName)
+    {
+        // Убираем недопустимые символы из имени файла
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var safeName = new string(fileName.Where(c => !invalidChars.Contains(c)).ToArray());
+        return string.IsNullOrEmpty(safeName) ? "document_" + Guid.NewGuid() : safeName;
     }
 }
