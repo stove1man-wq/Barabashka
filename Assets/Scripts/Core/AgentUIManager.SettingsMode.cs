@@ -26,6 +26,7 @@ public partial class AgentUIManager
     private RectTransform _settingsContent;
     private ScrollRect _settingsScroll;
     private bool _settingsMode;
+    public bool SettingsMode => _settingsMode;
     private string _currentSettingsPageId;
     private readonly List<string> _settingsConfirmations = new List<string>();
 

@@ -159,7 +159,19 @@ public class AgentManager : MonoBehaviour
             {
                 _uiManager.AddUserMessage(message);
                 ChatKinds.Set(ChatKind.System);
-                _uiManager.ShowSettings();
+                // Если мы не в режиме настроек, нужно включить его
+                if (!_uiManager.SettingsMode)
+                {
+                    _uiManager.ShowSettings();
+                }
+                
+                // Вызываем SettingsVoice.TryHandle для обработки голосовой команды на странице настроек
+                if (SettingsVoice.TryHandle(message, _uiManager))
+                {
+                    AgentActivityBus.PublishResting();
+                    return;
+                }
+                
                 AgentActivityBus.PublishResting();
                 return;
             }

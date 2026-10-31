@@ -29,7 +29,30 @@ namespace Barabashka.Core.Settings
 
         public bool TryVoice(string normalized, out string reply)
         {
-            reply = null; return false;
+            reply = null;
+            if (string.IsNullOrEmpty(normalized))
+                return false;
+
+            // Команды управления городом
+            if (normalized.Contains("покажи город") || normalized.Contains("какой город"))
+            {
+                reply = "Город по умолчанию: " + (AgentWeather.DefaultCity()?.Name ?? "не указан");
+                return true;
+            }
+
+            if (normalized.Contains("покажи время") || normalized.Contains("который час"))
+            {
+                reply = "Текущее время: " + System.DateTime.Now.ToString("HH:mm");
+                return true;
+            }
+
+            if (normalized.Contains("покажи дату") || normalized.Contains("какая дата"))
+            {
+                reply = "Текущая дата: " + System.DateTime.Now.ToString("dd.MM.yyyy");
+                return true;
+            }
+
+            return false;
         }
 
         private static string ApplyCity(string city)

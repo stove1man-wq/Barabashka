@@ -20,13 +20,29 @@ namespace Barabashka.Core.Settings
             view.Toggle(
                 "Озвучивать ответы",
                 () => AppSettings.SpeakReplies,
-                v => { AppSettings.SpeakReplies = v; return v ? "Озвучка включена" : "Озвучка выключена"; });
+                v => { AppSettings.SpeakReplies = v; return v ? "Озвучка включена" : "Озвучка выключена" }); 
         }
 
         public bool TryVoice(string normalized, out string reply)
         {
             reply = null;
-            return false; // пока не реализовано
+            if (string.IsNullOrEmpty(normalized))
+                return false;
+
+            // Команды включения/выключения озвучки
+            if (normalized.Contains("включи озвучку") || normalized.Contains("включить озвучку"))
+            {
+                reply = "Озвучка включена";
+                return true;
+            }
+            
+            if (normalized.Contains("выключи озвучку") || normalized.Contains("выключить озвучку"))
+            {
+                reply = "Озвучка выключена";
+                return true;
+            }
+            
+            return false;
         }
     }
 }
