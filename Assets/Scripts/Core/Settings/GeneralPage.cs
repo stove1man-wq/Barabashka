@@ -33,22 +33,10 @@ namespace Barabashka.Core.Settings
             if (string.IsNullOrEmpty(normalized))
                 return false;
 
-            // Команды управления городом
-            if (normalized.Contains("покажи город") || normalized.Contains("какой город"))
+            // «какой город по умолчанию» (изменить город голосом нельзя: он находится по сети, меняйте полем)
+            if (normalized.Contains("какой город") || normalized.Contains("город по умолчанию"))
             {
                 reply = "Город по умолчанию: " + (AgentWeather.DefaultCity()?.Name ?? "не указан");
-                return true;
-            }
-
-            if (normalized.Contains("покажи время") || normalized.Contains("который час"))
-            {
-                reply = "Текущее время: " + System.DateTime.Now.ToString("HH:mm");
-                return true;
-            }
-
-            if (normalized.Contains("покажи дату") || normalized.Contains("какая дата"))
-            {
-                reply = "Текущая дата: " + System.DateTime.Now.ToString("dd.MM.yyyy");
                 return true;
             }
 

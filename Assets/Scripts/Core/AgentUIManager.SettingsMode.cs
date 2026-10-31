@@ -28,6 +28,7 @@ public partial class AgentUIManager
     private bool _settingsMode;
     public bool SettingsMode => _settingsMode;
     private string _currentSettingsPageId;
+    public string CurrentSettingsPageId => _currentSettingsPageId;
     private readonly List<string> _settingsConfirmations = new List<string>();
 
     // ---- построение ----

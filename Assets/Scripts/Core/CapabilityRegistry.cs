@@ -64,6 +64,11 @@ public static class CapabilityRegistry
         Add("alarm_show", "Показать будильники", RiskLevel.Observe, none, true);
         Add("dial", "Набрать номер", RiskLevel.Prepare, none, true);
         Add("call", "Позвонить", RiskLevel.Act, none, true, PhoneComms.PermContacts, PhoneComms.PermCall).SelfGated = true;
+        // Облачные модели: необязательны, ядро работает без них. Российские доступны без VPN, зарубежные нет.
+        Add("llm_gigachat", "Умные ответы: GigaChat", RiskLevel.Observe, NetworkNeed.Optional, false).Zone = NetworkZone.Domestic;
+        Add("llm_yandex", "Умные ответы: YandexGPT", RiskLevel.Observe, NetworkNeed.Optional, false).Zone = NetworkZone.Domestic;
+        Add("llm_openrouter", "Умные ответы: OpenRouter", RiskLevel.Observe, NetworkNeed.Optional, false).Zone = NetworkZone.Foreign;
+        Add("llm_groq", "Умные ответы: Groq", RiskLevel.Observe, NetworkNeed.Optional, false).Zone = NetworkZone.Foreign;
         Add("telegram_read", "Читать Telegram", RiskLevel.Observe, net, true).Connector = "telegram";
         Add("message", "Написать сообщение", RiskLevel.Act, none, true, PhoneComms.PermContacts, PhoneComms.PermSms).SelfGated = true;
     }

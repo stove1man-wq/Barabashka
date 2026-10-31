@@ -1,125 +1,97 @@
 using System;
-using System.Linq;
+using System.Text.RegularExpressions;
 using Barabashka.Contracts;
-using UnityEngine;
 
 namespace Barabashka.Core.Settings
 {
     /// <summary>
-    /// Обработчик голосовых команд для страниц настроек.
+    /// Голосовые и текстовые команды страниц настроек.
+    /// Resolve не знает про интерфейс (его просто проверять тестами): он говорит, какую страницу показать и что ответить.
+    /// Вне режима настроек работает только «открой настройки &lt;страница&gt;». Команды самих страниц (TryVoice) выполняются
+    /// только внутри режима настроек, чтобы обычные фразы не меняли настройки случайно.
     /// </summary>
     public static class SettingsVoice
     {
-        /// <summary>
-        /// Попытаться обработать голосовую команду для настроек.
-        /// </summary>
-        /// <param name="message">Сообщение пользователя (нормализованное)</param>
-        /// <param name="settingsOpen">Открыты ли настройки</param>
-        /// <param name="ui">UI менеджер</param>
-        /// <returns>true, если команда распознана и обработана</returns>
-        public static bool TryHandle(string message, bool settingsOpen, AgentUIManager ui)
+        public struct Result
         {
-            if (string.IsNullOrEmpty(message) || ui == null)
-                return false;
+            /// <summary>Фраза была командой настроек и обработана.</summary>
+            public bool Handled;
+            /// <summary>Какую страницу показать.</summary>
+            public string PageId;
+            /// <summary>Подтверждение для области настроек (может быть null).</summary>
+            public string Reply;
+        }
 
-            // Нормализация сообщения: нижний регистр, замена ё на е, удаление знаков
-            string normalized = NormalizeMessage(message);
-            
-            // Проверяем команду "открой/покажи настройки <страница>"
-            var match = System.Text.RegularExpressions.Regex.Match(normalized, @"^(открой|покажи|покажи настройки)\s+(.+)");
-            if (match.Success)
+        private static readonly Regex OpenPage = new Regex(
+            @"^(?:открой|открыть|покажи|показать|зайди в|перейди в|перейти в)\s+(?:в\s+)?настройки\s+(.+)$",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        public static Result Resolve(string message, bool settingsOpen, string currentPageId)
+        {
+            var none = new Result();
+            string text = Normalize(message);
+            if (text.Length == 0) return none;
+
+            Match open = OpenPage.Match(text);
+            if (open.Success)
             {
-                string pageName = match.Groups[2].Value.Trim();
-                ISettingsPage page = SettingsRegistry.Find(pageName);
-                
-                if (page != null)
-                {
-                    // Показываем указанную страницу
-                    ui.ShowSettings(page.Id);
-                    return true;
-                }
-                else
-                {
-                    // Если страница не найдена, работаем как с WantsSettings
-                    return WantsSettings(normalized);
-                }
+                ISettingsPage target = FindPage(open.Groups[1].Value.Trim());
+                if (target != null) return new Result { Handled = true, PageId = target.Id };
+                // «открой настройки вайфай» и подобное: не наши страницы, дальше решают прежние правила.
+                return none;
             }
 
-            // Если настройки уже открыты и есть страница с именем, ищем в ней команду
-            if (settingsOpen)
+            if (!settingsOpen) return none;
+
+            ISettingsPage current = string.IsNullOrEmpty(currentPageId) ? null : SettingsRegistry.Find(currentPageId);
+            string reply;
+            if (current != null && current.TryVoice(text, out reply))
+                return new Result { Handled = true, PageId = current.Id, Reply = reply };
+            foreach (ISettingsPage other in SettingsRegistry.Pages)
             {
-                // Перебираем страницы, начиная с текущей
-                var pages = SettingsRegistry.Pages;
-                ISettingsPage currentPage = null;
-                if (!string.IsNullOrEmpty(ui.CurrentSettingsPageId))
-                {
-                    currentPage = SettingsRegistry.Find(ui.CurrentSettingsPageId);
-                }
-                
-                // Сначала проверяем текущую страницу, затем остальные
-                if (currentPage != null)
-                {
-                    return TryHandleOnPage(currentPage, normalized, out string reply) && 
-                           ui.ShowSettings(ui.CurrentSettingsPageId, reply);
-                }
-                
-                foreach (var page in pages)
-                {
-                    if (TryHandleOnPage(page, normalized, out string reply))
-                    {
-                        return ui.ShowSettings(page.Id, reply);
-                    }
-                }
+                if (other == current) continue;
+                if (other.TryVoice(text, out reply))
+                    return new Result { Handled = true, PageId = other.Id, Reply = reply };
             }
-
-            // Если не в режиме настроек и не получилось обработать, работаем как с WantsSettings
-            return WantsSettings(normalized);
+            return none;
         }
 
-        /// <summary>
-        /// Проверяет команды, которые работают вне режима настроек
-        /// </summary>
-        private static bool WantsSettings(string normalized)
+        /// <summary>Нижний регистр, ё как е, знаки препинания как пробелы, лишние пробелы убраны.</summary>
+        public static string Normalize(string message)
         {
-            // Команды открытия настроек
-            return normalized.Contains("настройки") || 
-                   normalized.Contains("показать настройки") ||
-                   normalized.Contains("открыть настройки");
+            if (string.IsNullOrEmpty(message)) return string.Empty;
+            string t = message.ToLowerInvariant().Replace('ё', 'е');
+            t = Regex.Replace(t, @"[^\w\s]", " ");
+            return Regex.Replace(t, @"\s+", " ").Trim();
         }
 
-        /// <summary>
-        /// Попытаться обработать команду на конкретной странице
-        /// </summary>
-        private static bool TryHandleOnPage(ISettingsPage page, string normalized, out string reply)
+        private static ISettingsPage FindPage(string name)
         {
-            reply = null;
-            if (page == null || string.IsNullOrEmpty(normalized))
-                return false;
-
-            return page.TryVoice(normalized, out reply);
+            if (string.IsNullOrEmpty(name)) return null;
+            ISettingsPage exact = SettingsRegistry.Find(name);
+            if (exact != null) return exact;
+            foreach (ISettingsPage page in SettingsRegistry.Pages)
+            {
+                if (Matches(name, Normalize(page.Id)) || Matches(name, Normalize(page.Title))) return page;
+                if (page.Aliases == null) continue;
+                foreach (string alias in page.Aliases)
+                    if (Matches(name, Normalize(alias))) return page;
+            }
+            return null;
         }
 
-        /// <summary>
-        /// Нормализация сообщения: приведение к нижнему регистру, замена ё на е, удаление знаков
-        /// </summary>
-        private static string NormalizeMessage(string message)
+        // «озвучки» ~ «озвучка», «голоса» ~ «голос»: слова совпадают, если одно начинается с другого (от 4 букв)
+        // или у них общее начало в 5 и более букв.
+        private static bool Matches(string a, string b)
         {
-            if (string.IsNullOrEmpty(message))
-                return string.Empty;
-                
-            // Приводим к нижнему регистру
-            string normalized = message.ToLowerInvariant();
-            
-            // Заменяем ё на е
-            normalized = normalized.Replace('ё', 'е');
-            
-            // Убираем знаки препинания и лишние пробелы
-            normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @"[^\w\s]", string.Empty);
-            
-            // Убираем лишние пробелы
-            normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @"\s+", " ").Trim();
-            
-            return normalized;
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+            if (a == b) return true;
+            if (a.Length >= 4 && b.Length >= 4 &&
+                (a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal))) return true;
+            int common = 0;
+            int max = Math.Min(a.Length, b.Length);
+            while (common < max && a[common] == b[common]) common++;
+            return common >= 5;
         }
     }
 }

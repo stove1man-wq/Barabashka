@@ -38,16 +38,23 @@ namespace Barabashka.Core.Settings
         public bool TryVoice(string normalized, out string reply)
         {
             reply = null;
-            if (string.IsNullOrEmpty(normalized))
-                return false;
+            if (string.IsNullOrEmpty(normalized) || !normalized.Contains("оператор")) return false;
 
-            // Команда установки оператора по умолчанию
-            if (normalized.Contains("оператор такси") || normalized.Contains("такси оператор"))
+            // «оператор такси авто» или «оператор такси <название из списка>»
+            if (normalized.Contains("авто"))
             {
-                reply = "Оператор такси: авто";
+                reply = SetOperator(0);
                 return true;
             }
-
+            for (int i = 0; i < TaxiProviderRegistry.All.Count; i++)
+            {
+                string name = (TaxiProviderRegistry.All[i].DisplayName ?? string.Empty).ToLowerInvariant().Replace('ё', 'е');
+                if (name.Length > 0 && normalized.Contains(name))
+                {
+                    reply = SetOperator(i + 1);
+                    return true;
+                }
+            }
             return false;
         }
 

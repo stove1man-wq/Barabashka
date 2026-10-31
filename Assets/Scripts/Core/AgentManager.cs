@@ -155,23 +155,22 @@ public class AgentManager : MonoBehaviour
                 AgentActivityBus.PublishResting();
                 return;
             }
+            // «Открой настройки голос» и команды страниц внутри режима настроек.
+            Barabashka.Core.Settings.SettingsVoice.Result settingsCmd =
+                Barabashka.Core.Settings.SettingsVoice.Resolve(message, _uiManager.SettingsMode, _uiManager.CurrentSettingsPageId);
+            if (settingsCmd.Handled)
+            {
+                _uiManager.AddUserMessage(message);
+                ChatKinds.Set(ChatKind.System);
+                _uiManager.ShowSettings(settingsCmd.PageId, settingsCmd.Reply);
+                AgentActivityBus.PublishResting();
+                return;
+            }
             if (WantsSettings(message))
             {
                 _uiManager.AddUserMessage(message);
                 ChatKinds.Set(ChatKind.System);
-                // Если мы не в режиме настроек, нужно включить его
-                if (!_uiManager.SettingsMode)
-                {
-                    _uiManager.ShowSettings();
-                }
-                
-                // Вызываем SettingsVoice.TryHandle для обработки голосовой команды на странице настроек
-                if (SettingsVoice.TryHandle(message, _uiManager))
-                {
-                    AgentActivityBus.PublishResting();
-                    return;
-                }
-                
+                _uiManager.ShowSettings();
                 AgentActivityBus.PublishResting();
                 return;
             }

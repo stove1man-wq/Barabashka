@@ -149,13 +149,27 @@ public static class LlmProfiles
         var list = new List<LlmProfile>();
         if (LlmSettings.OllamaUsable) list.Add(OllamaProfile());
         LlmProfile device = null;
+        var domestic = new List<LlmProfile>();
+        var foreign = new List<LlmProfile>();
         foreach (LlmProfile p in Extra())
         {
-            if (p.IsDevice) device = p;   // модель в телефоне медленнее остальных: обращаемся к ней в последнюю очередь
-            else list.Add(p);
+            if (p.IsDevice) { device = p; continue; }   // модель в телефоне медленнее остальных: обращаемся к ней в последнюю очередь
+            // YandexGPT без ID каталога работать не может: не тратим на неё время.
+            if ((p.model ?? string.Empty).Contains("{project}") && string.IsNullOrEmpty(p.project)) continue;
+            if (IsDomestic(p)) domestic.Add(p); else foreign.Add(p);
         }
+        list.AddRange(domestic);   // российские облачные работают без VPN
+        list.AddRange(foreign);
         if (device != null) list.Add(device);
         return list;
+    }
+
+    /// <summary>Российская облачная модель (GigaChat, YandexGPT): не требует VPN.</summary>
+    public static bool IsDomestic(LlmProfile p)
+    {
+        if (p == null) return false;
+        string url = (p.url ?? string.Empty).ToLowerInvariant();
+        return p.IsGigaChat || url.Contains("yandex") || url.Contains("sberbank");
     }
 
     public static void AddOrReplace(LlmProfile profile)

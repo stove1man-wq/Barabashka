@@ -34,16 +34,27 @@ namespace Barabashka.Core.Settings
             if (string.IsNullOrEmpty(normalized))
                 return false;
 
-            // Команды управления историей чата
-            if (normalized.Contains("удали чат") || normalized.Contains("очисти чат"))
+            // «включи / выключи корзину»
+            if (normalized.Contains("корзин"))
             {
-                reply = "История чата очищена";
+                bool off = normalized.Contains("выключ") || normalized.Contains("отключ");
+                bool on = normalized.Contains("включ");
+                if (on == off) return false;
+                AppSettings.ChatTrash = on;
+                reply = AppSettings.ChatTrashTitle(on);
                 return true;
             }
 
-            if (normalized.Contains("хранить чат") || normalized.Contains("сохранять чат"))
+            // «хранить историю неделю / всегда», «не хранить историю» (порядок как в списке на странице: 0, 1, 2)
+            if (normalized.Contains("истори"))
             {
-                reply = "Хранить историю: всегда";
+                ChatKeep keep;
+                if (normalized.Contains("не хранить")) keep = (ChatKeep)0;
+                else if (normalized.Contains("недел")) keep = (ChatKeep)1;
+                else if (normalized.Contains("всегда")) keep = (ChatKeep)2;
+                else return false;
+                AppSettings.ChatHistory = keep;
+                reply = AppSettings.ChatKeepTitle(keep);
                 return true;
             }
 

@@ -15,7 +15,7 @@
 - Инструменты (`IAgentTool`): `AgentToolRegistry.cs`, `AgentToolset.cs`, `PhoneTools.cs`, `CommTools.cs`, `NoteTools.cs`, `WeatherTools.cs`, `ReminderTools.cs`, `MarketplaceTools.cs`, `MarketplaceOpenTool.cs`.
 - Действия на телефоне: `PhoneActions.cs` (приложения, сайты, поиск), `PhoneComms.cs` (звонки, SMS).
 - Напоминания: `AgentReminders.cs` (данные), `AgentReminderService.cs` (проверка при открытом приложении); системные уведомления: `Notifications/AndroidNotifications/`.
-- Модели: `HybridBrain.cs`, `LlmClient.cs`, `LlmProfile.cs`, `LlmSettings.cs`, `LocalModel.cs`.
+- Модели: `HybridBrain.cs`, `LlmClient.cs` (Ollama, OpenAI-совместимые, GigaChat), `LlmProfile.cs` (профили, порядок `Chain`), `LlmSettings.cs`, `LocalModel.cs`, `GigaChatAuth.cs` (токен), `SberTls.cs` (сертификаты Минцифры из `Assets/Resources/certs`).
 - Политика и возможности: `ActionPolicy.cs`, `ActionGate.cs`, `CapabilityRegistry.cs`, `AppSettings.cs`.
 - Настройки: `Core/Settings/*Page.cs` (страницы), реестр в `Contracts/Settings.cs`, голосовые команды в `Core/Settings/SettingsVoice.cs`.
 - Старт: `Core/AppBootstrap.cs`, `Core/AgentManager.cs`.
