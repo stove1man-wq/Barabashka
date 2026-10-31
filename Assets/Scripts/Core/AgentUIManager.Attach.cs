@@ -1,3 +1,4 @@
+using Barabashka.Contracts;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -60,63 +61,73 @@ public partial class AgentUIManager
 
     private System.Collections.IEnumerator PickDocumentAsync()
     {
-        var ct = new CancellationTokenSource();
-        var result = MediaServices.Picker.PickAsync(MediaKind.Document, true, ct.Token);
-        yield return new WaitUntil(() => result.IsCompleted);
-        var items = result.Result;
-        if (items != null && items.Count > 0)
+        IMediaPicker picker = MediaServices.Picker;
+        if (picker == null)
         {
-            foreach (var item in items)
+            SetStatus("Выбор файлов сейчас недоступен");
+            yield break;
+        }
+
+        var cts = new System.Threading.CancellationTokenSource();
+        System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MediaItem>> task =
+            picker.PickAsync(MediaKind.Document, true, cts.Token);
+        yield return new WaitUntil(() => task.IsCompleted);
+
+        if (task.IsFaulted || task.IsCanceled)
+        {
+            SetStatus("Не удалось выбрать документ");
+            yield break;
+        }
+
+        var added = new System.Collections.Generic.List<string>();
+        System.Collections.Generic.IReadOnlyList<MediaItem> items = task.Result;
+        if (items != null)
+        {
+            foreach (MediaItem item in items)
             {
-                // Копируем файл в папку InboxFolder/documents
-                CopyDocumentToInbox(item);
-                // Отправляем в чат карточку документа
-                SendDocumentCardToChat(item);
+                string name = CopyDocumentToStore(item);
+                if (name != null) added.Add(name);
             }
+        }
+
+        if (added.Count > 0)
+        {
+            ChatKinds.Set(ChatKind.System);
+            AddAgentMessage("Добавлено документов: " + added.Count + " (" + string.Join(", ", added) + "). Скажите «мои документы» или «открой документ ...».");
+        }
+        else if (items != null && items.Count > 0)
+        {
+            SetStatus("Не удалось сохранить документ");
         }
     }
 
-    private void CopyDocumentToInbox(MediaItem item)
+    // Окно выбора уже копирует файл в каталог приложения и отдаёт file://-адрес; здесь он переносится в папку документов.
+    private static string CopyDocumentToStore(MediaItem item)
     {
-        // Имитация копирования документа в папку InboxFolder/documents
-        // Проверим что это локальный файл
-        if (item.Uri.StartsWith("file://"))
+        if (item == null || string.IsNullOrEmpty(item.Uri) || !item.Uri.StartsWith("file://", System.StringComparison.Ordinal)) return null;
+        try
         {
-            try
-            {
-                string localPath = new Uri(item.Uri).LocalPath;
-                string fileName = item.Title;
-                string safeFileName = MakeSafeFileName(fileName);
-                string destinationPath = Path.Combine(MediaPicker.InboxFolder, "documents", safeFileName);
-                
-                // Создаем директорию если не существует
-                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
-                
-                // Копируем файл (в реальной реализации это должно быть через Android)
-                File.Copy(localPath, destinationPath, true);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning("[Docs] Ошибка копирования документа: " + ex.Message);
-            }
+            string localPath = new System.Uri(item.Uri).LocalPath;
+            string safeName = MakeSafeFileName(string.IsNullOrEmpty(item.Title) ? System.IO.Path.GetFileName(localPath) : item.Title);
+            string folder = Barabashka.Core.DocsStore.Folder;
+            System.IO.Directory.CreateDirectory(folder);
+            string destination = System.IO.Path.Combine(folder, safeName);
+            System.IO.File.Copy(localPath, destination, true);
+            return safeName;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning("[Docs] Ошибка копирования документа: " + ex.Message);
+            return null;
         }
     }
 
-    private void SendDocumentCardToChat(MediaItem item)
+    private static string MakeSafeFileName(string fileName)
     {
-        // Создаем карточку документа для чата
-        string card = MediaItem.Encode(item) + "&src=document&kind=2";
-        if (_agentManager != null)
-        {
-            _agentManager.EnqueueSystemMessage(card, "document");
-        }
-    }
-
-    private string MakeSafeFileName(string fileName)
-    {
-        // Убираем недопустимые символы из имени файла
-        var invalidChars = Path.GetInvalidFileNameChars();
-        var safeName = new string(fileName.Where(c => !invalidChars.Contains(c)).ToArray());
-        return string.IsNullOrEmpty(safeName) ? "document_" + Guid.NewGuid() : safeName;
+        var sb = new System.Text.StringBuilder();
+        char[] invalid = System.IO.Path.GetInvalidFileNameChars();
+        foreach (char c in fileName ?? string.Empty)
+            if (System.Array.IndexOf(invalid, c) < 0) sb.Append(c);
+        return sb.Length == 0 ? "document_" + System.Guid.NewGuid().ToString("N") : sb.ToString();
     }
 }

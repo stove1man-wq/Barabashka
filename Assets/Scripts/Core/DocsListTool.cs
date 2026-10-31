@@ -22,7 +22,7 @@ namespace Barabashka.Core
             try
             {
                 string query = ToolArgs.Get(args, "query").ToLowerInvariant();
-                string documentsFolder = Path.Combine(MediaPicker.InboxFolder, "documents");
+                string documentsFolder = DocsStore.Folder;
                 
                 if (!Directory.Exists(documentsFolder))
                 {
@@ -33,7 +33,7 @@ namespace Barabashka.Core
                 var dirInfo = new DirectoryInfo(documentsFolder);
                 foreach (var file in dirInfo.GetFiles())
                 {
-                    if (IsSupportedDocument(file.Extension))
+                    if (DocsStore.IsSupported(file.Extension))
                     {
                         documents.Add(file);
                     }
@@ -52,7 +52,7 @@ namespace Barabashka.Core
                     if (query.Length > 0 && !file.Name.ToLowerInvariant().Contains(query))
                         continue;
 
-                    string size = FormatFileSize(file.Length);
+                    string size = DocsStore.FormatSize(file.Length);
                     sb.Append(shown + 1).Append(". ").Append(file.Name).Append(" (").Append(size).Append(")\n");
                     shown++;
                 }
@@ -69,23 +69,6 @@ namespace Barabashka.Core
             {
                 return Task.FromResult(ToolResult.Fail("Ошибка при поиске документов: " + ex.Message));
             }
-        }
-
-        private bool IsSupportedDocument(string extension)
-        {
-            var supportedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ".pdf", ".doc", ".docx", ".txt", ".xls", ".xlsx"
-            };
-            return supportedExtensions.Contains(extension);
-        }
-
-        private string FormatFileSize(long bytes)
-        {
-            if (bytes < 1024) return bytes + " байт";
-            if (bytes < 1024 * 1024) return (bytes / 1024.0).ToString("F1") + " КБ";
-            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024.0 * 1024.0)).ToString("F1") + " МБ";
-            return (bytes / (1024.0 * 1024.0 * 1024.0)).ToString("F1") + " ГБ";
         }
     }
 }

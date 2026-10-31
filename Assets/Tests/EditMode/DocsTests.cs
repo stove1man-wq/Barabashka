@@ -1,56 +1,46 @@
-using System.Collections.Generic;
-using Barabashka.Core;
 using NUnit.Framework;
+using Barabashka.Core;
 
 namespace Barabashka.Tests
 {
     public class DocsTests
     {
         [Test]
-        public void TestDocsListTool_Description()
+        public void Tools_HaveNamesAndDescriptions()
         {
-            var tool = new DocsListTool();
-            Assert.AreEqual("docs_list", tool.Name);
-            Assert.IsNotNull(tool.Description);
+            var list = new DocsListTool();
+            var open = new DocsOpenTool();
+            Assert.AreEqual("docs_list", list.Name);
+            Assert.AreEqual("docs_open", open.Name);
+            Assert.IsNotNull(list.Description);
+            Assert.IsNotNull(open.Description);
         }
 
         [Test]
-        public void TestDocsOpenTool_Description()
+        public void SupportedExtensions()
         {
-            var tool = new DocsOpenTool();
-            Assert.AreEqual("docs_open", tool.Name);
-            Assert.IsNotNull(tool.Description);
+            Assert.IsTrue(DocsStore.IsSupported(".pdf"));
+            Assert.IsTrue(DocsStore.IsSupported(".DOCX"));
+            Assert.IsFalse(DocsStore.IsSupported(".exe"));
+            Assert.IsFalse(DocsStore.IsSupported(""));
+            Assert.IsFalse(DocsStore.IsSupported(null));
         }
 
         [Test]
-        public void TestDocsListTool_SupportedExtensions()
+        public void FileSizeFormatting()
         {
-            var tool = new DocsListTool();
-            
-            // Проверяем поддерживаемые расширения
-            Assert.IsTrue(tool.GetType().GetMethod("IsSupportedDocument") != null);
+            Assert.AreEqual("1023 байт", DocsStore.FormatSize(1023));
+            Assert.AreEqual("1.0 КБ", DocsStore.FormatSize(1024));
+            Assert.AreEqual("1.5 КБ", DocsStore.FormatSize(1536));
+            Assert.AreEqual("1.0 МБ", DocsStore.FormatSize(1024 * 1024));
+            Assert.AreEqual("1.0 ГБ", DocsStore.FormatSize(1024L * 1024 * 1024));
         }
 
         [Test]
-        public void TestDocsOpenTool_SupportedExtensions()
+        public void MimeTypes()
         {
-            var tool = new DocsOpenTool();
-            
-            // Проверяем поддерживаемые расширения
-            Assert.IsTrue(tool.GetType().GetMethod("IsSupportedDocument") != null);
-        }
-
-        [Test]
-        public void TestFileSizeFormatting()
-        {
-            var tool = new DocsListTool();
-            
-            // Проверяем форматирование размеров файлов
-            Assert.AreEqual("1023 байт", tool.FormatFileSize(1023));
-            Assert.AreEqual("1.0 КБ", tool.FormatFileSize(1024));
-            Assert.AreEqual("1.5 КБ", tool.FormatFileSize(1536));
-            Assert.AreEqual("1.0 МБ", tool.FormatFileSize(1024 * 1024));
-            Assert.AreEqual("1.0 ГБ", tool.FormatFileSize(1024 * 1024 * 1024));
+            Assert.AreEqual("application/pdf", DocsStore.MimeType(".PDF"));
+            Assert.AreEqual("application/octet-stream", DocsStore.MimeType(".xyz"));
         }
     }
 }
