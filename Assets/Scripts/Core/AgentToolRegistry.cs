@@ -69,6 +69,8 @@ public sealed class AgentToolRegistry : IToolRegistry
         registry.Register(new TaxiSetPlaceTool());
         registry.Register(new MediaPickTool());
         registry.Register(new MediaControlTool());
+        registry.Register(new DocsListTool());
+        registry.Register(new DocsOpenTool());
         return registry;
     }
 
