@@ -15,6 +15,7 @@
 - Действия на телефоне: `PhoneActions.cs` (приложения, сайты, поиск), `PhoneComms.cs` (звонки, SMS).
 - Напоминания: `AgentReminders.cs` (данные), `AgentReminderService.cs` (проверка при открытом приложении); системные уведомления: `Notifications/AndroidNotifications/`.
 - Модели: `HybridBrain.cs`, `LlmClient.cs`, `LlmProfile.cs`, `LlmSettings.cs`, `LocalModel.cs`.
+- Документы: `DocsListTool.cs`, `DocsOpenTool.cs`.
 - Политика и возможности: `ActionPolicy.cs`, `ActionGate.cs`, `CapabilityRegistry.cs`, `AppSettings.cs`.
 - Настройки: `Core/Settings/*Page.cs` (страницы), реестр в `Contracts/Settings.cs`.
 - Старт: `Core/AppBootstrap.cs`, `Core/AgentManager.cs`.
