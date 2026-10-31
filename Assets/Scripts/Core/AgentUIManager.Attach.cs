@@ -1,4 +1,3 @@
-using Barabashka.Contracts;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -37,12 +36,7 @@ public partial class AgentUIManager
 
         AddAttachItem(panel.transform, "Фото", 0, () => RunAttach("выбери фото"));
         AddAttachItem(panel.transform, "Видео", 1, () => RunAttach("выбери видео"));
-        AddAttachItem(panel.transform, "Документ", 2, () =>
-        {
-            _attachMenu.SetActive(false);
-            // Вызов выбора документа через системное окно
-            StartCoroutine(PickDocumentAsync());
-        });
+        AddAttachItem(panel.transform, "Документ", 2, () => RunAttach("выбери документ"));
     }
 
     private void AddAttachItem(Transform panel, string label, int index, UnityEngine.Events.UnityAction action)
@@ -57,77 +51,5 @@ public partial class AgentUIManager
     {
         _attachMenu.SetActive(false);
         if (_agentManager != null) _agentManager.SendUserMessage(phrase);
-    }
-
-    private System.Collections.IEnumerator PickDocumentAsync()
-    {
-        IMediaPicker picker = MediaServices.Picker;
-        if (picker == null)
-        {
-            SetStatus("Выбор файлов сейчас недоступен");
-            yield break;
-        }
-
-        var cts = new System.Threading.CancellationTokenSource();
-        System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MediaItem>> task =
-            picker.PickAsync(MediaKind.Document, true, cts.Token);
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.IsFaulted || task.IsCanceled)
-        {
-            SetStatus("Не удалось выбрать документ");
-            yield break;
-        }
-
-        var added = new System.Collections.Generic.List<string>();
-        System.Collections.Generic.IReadOnlyList<MediaItem> items = task.Result;
-        if (items != null)
-        {
-            foreach (MediaItem item in items)
-            {
-                string name = CopyDocumentToStore(item);
-                if (name != null) added.Add(name);
-            }
-        }
-
-        if (added.Count > 0)
-        {
-            ChatKinds.Set(ChatKind.System);
-            AddAgentMessage("Добавлено документов: " + added.Count + " (" + string.Join(", ", added) + "). Скажите «мои документы» или «открой документ ...».");
-        }
-        else if (items != null && items.Count > 0)
-        {
-            SetStatus("Не удалось сохранить документ");
-        }
-    }
-
-    // Окно выбора уже копирует файл в каталог приложения и отдаёт file://-адрес; здесь он переносится в папку документов.
-    private static string CopyDocumentToStore(MediaItem item)
-    {
-        if (item == null || string.IsNullOrEmpty(item.Uri) || !item.Uri.StartsWith("file://", System.StringComparison.Ordinal)) return null;
-        try
-        {
-            string localPath = new System.Uri(item.Uri).LocalPath;
-            string safeName = MakeSafeFileName(string.IsNullOrEmpty(item.Title) ? System.IO.Path.GetFileName(localPath) : item.Title);
-            string folder = Barabashka.Core.DocsStore.Folder;
-            System.IO.Directory.CreateDirectory(folder);
-            string destination = System.IO.Path.Combine(folder, safeName);
-            System.IO.File.Copy(localPath, destination, true);
-            return safeName;
-        }
-        catch (System.Exception ex)
-        {
-            Debug.LogWarning("[Docs] Ошибка копирования документа: " + ex.Message);
-            return null;
-        }
-    }
-
-    private static string MakeSafeFileName(string fileName)
-    {
-        var sb = new System.Text.StringBuilder();
-        char[] invalid = System.IO.Path.GetInvalidFileNameChars();
-        foreach (char c in fileName ?? string.Empty)
-            if (System.Array.IndexOf(invalid, c) < 0) sb.Append(c);
-        return sb.Length == 0 ? "document_" + System.Guid.NewGuid().ToString("N") : sb.ToString();
     }
 }

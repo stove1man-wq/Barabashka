@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Barabashka.Contracts;
 using UnityEngine;
 
 namespace Barabashka.Core
@@ -21,6 +22,39 @@ namespace Barabashka.Core
         {
             ".pdf", ".doc", ".docx", ".txt", ".xls", ".xlsx"
         };
+
+        /// <summary>
+        /// Переносит выбранный файл (окно выбора уже скопировало его в каталог приложения, адрес file://) в папку документов.
+        /// Возвращает имя сохранённого файла или null, если не получилось.
+        /// </summary>
+        public static string Import(MediaItem item)
+        {
+            if (item == null || string.IsNullOrEmpty(item.Uri) || !item.Uri.StartsWith("file://", StringComparison.Ordinal)) return null;
+            try
+            {
+                string source = new Uri(item.Uri).LocalPath;
+                string name = SafeFileName(string.IsNullOrEmpty(item.Title) ? Path.GetFileName(source) : item.Title);
+                if (!Path.HasExtension(name)) name += Path.GetExtension(source);
+                Directory.CreateDirectory(Folder);
+                File.Copy(source, Path.Combine(Folder, name), true);
+                try { File.Delete(source); } catch (Exception) { }   // копия окна выбора больше не нужна
+                return name;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Docs] Не удалось сохранить документ: " + ex.Message);
+                return null;
+            }
+        }
+
+        public static string SafeFileName(string fileName)
+        {
+            var sb = new System.Text.StringBuilder();
+            char[] invalid = Path.GetInvalidFileNameChars();
+            foreach (char c in fileName ?? string.Empty)
+                if (Array.IndexOf(invalid, c) < 0) sb.Append(c);
+            return sb.Length == 0 ? "document_" + Guid.NewGuid().ToString("N") : sb.ToString();
+        }
 
         public static bool IsSupported(string extension)
         {

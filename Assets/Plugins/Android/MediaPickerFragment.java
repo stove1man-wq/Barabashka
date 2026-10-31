@@ -13,6 +13,7 @@ import android.media.ExifInterface;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.util.Log;
 
@@ -83,12 +84,30 @@ public final class MediaPickerFragment extends Fragment {
         receiver = args.getString("receiver", "");
         method = args.getString("method", "");
         try {
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.setType(mime);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
-            started = true;
-            startActivityForResult(Intent.createChooser(intent, null), REQUEST);
+            Intent intent;
+            if (mime.indexOf(',') >= 0) {
+                // Документы: окно «Документы» (а не «Недавние»), только нужные типы файлов.
+                intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.setType("*/*");
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, mime.split(","));
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+                try {
+                    // Начальная папка «Документы» (Android 8+); если её нет, окно откроется там, где открывалось в прошлый раз.
+                    intent.putExtra("android.provider.extra.INITIAL_URI",
+                            DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Documents"));
+                } catch (Throwable ignored) {
+                }
+                started = true;
+                startActivityForResult(intent, REQUEST);
+            } else {
+                intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType(mime);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+                started = true;
+                startActivityForResult(Intent.createChooser(intent, null), REQUEST);
+            }
         } catch (Throwable error) {
             Log.w(TAG, "start failed", error);
             send(receiver, method, "ERROR:" + error.getMessage());

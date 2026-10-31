@@ -26,7 +26,7 @@ namespace Barabashka.Core
                 
                 if (!Directory.Exists(documentsFolder))
                 {
-                    return Task.FromResult(ToolResult.Ok("Документов пока нет."));
+                    return Task.FromResult(ToolResult.Ok("Документов пока нет. Нажмите «＋» и выберите «Документ»."));
                 }
 
                 var documents = new List<FileInfo>();
@@ -41,7 +41,7 @@ namespace Barabashka.Core
 
                 if (documents.Count == 0)
                 {
-                    return Task.FromResult(ToolResult.Ok("Документов пока нет."));
+                    return Task.FromResult(ToolResult.Ok("Документов пока нет. Нажмите «＋» и выберите «Документ»."));
                 }
 
                 var sb = new System.Text.StringBuilder();

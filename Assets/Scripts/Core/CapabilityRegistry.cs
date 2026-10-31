@@ -52,6 +52,9 @@ public static class CapabilityRegistry
         Add("marketplace_open", "Открыть товар на маркетплейсе", RiskLevel.Prepare, net, false);
         Add("taxi_call", "Вызвать такси", RiskLevel.Prepare, NetworkNeed.Optional, true);
         Add("taxi_set_place", "Запомнить адрес дома или работы", RiskLevel.Prepare, NetworkNeed.Optional, false);
+        Add("docs_add", "Добавить документ", RiskLevel.Prepare, none, false);
+        Add("docs_list", "Показать документы", RiskLevel.Observe, none, false);
+        Add("docs_open", "Открыть документ", RiskLevel.Prepare, none, false);
         Add("media_pick", "Выбрать фото, картинку или видео", RiskLevel.Prepare, none, false);
         Add("media_control", "Управление просмотром и видео", RiskLevel.Observe, none, false);
         Add("route", "Показать место на карте", RiskLevel.Prepare, net, false);

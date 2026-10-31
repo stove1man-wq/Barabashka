@@ -56,6 +56,8 @@ public static class PhoneActions
     private static readonly string[][] AppAliases =
     {
         new[] { "телеграм", "telegram" },
+        // Мессенджер MAX (VK): в списке приложений подписан латиницей «MAX», пакет ru.oneme.app.
+        new[] { "макс", "max", "ru.oneme.app" }, new[] { "max", "max", "ru.oneme.app" },
         // Маркетплейсы: в списке приложений они подписаны латиницей, а говорят по-русски и по-разному.
         new[] { "озон", "ozon" }, new[] { "вайлдбер", "wildberries", "wb" }, new[] { "вайлбер", "wildberries", "wb" },
         new[] { "валдбер", "wildberries", "wb" }, new[] { "валбер", "wildberries", "wb" }, new[] { "вилдбер", "wildberries", "wb" },

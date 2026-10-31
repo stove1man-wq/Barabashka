@@ -16,7 +16,7 @@
 - Действия на телефоне: `PhoneActions.cs` (приложения, сайты, поиск), `PhoneComms.cs` (звонки, SMS).
 - Напоминания: `AgentReminders.cs` (данные), `AgentReminderService.cs` (проверка при открытом приложении); системные уведомления: `Notifications/AndroidNotifications/`.
 - Модели: `HybridBrain.cs`, `LlmClient.cs` (Ollama, OpenAI-совместимые, GigaChat), `LlmProfile.cs` (профили, порядок `Chain`), `LlmSettings.cs`, `LocalModel.cs`, `GigaChatAuth.cs` (токен), `SberTls.cs` (сертификаты Минцифры из `Assets/Resources/certs`).
-- Документы: `DocsListTool.cs`, `DocsOpenTool.cs`, `DocsStore.cs` (папка и правила), выбор через меню «＋» (`AgentUIManager.Attach.cs`).
+- Документы: `DocsParser.cs` (фразы), `DocsAddTool.cs`, `DocsListTool.cs`, `DocsOpenTool.cs`, `DocsStore.cs` (папка, правила, импорт); Android: `Assets/Plugins/Android/BarabashkaDocsProvider.java` (отдаёт файл просмотрщикам), окно выбора `MediaPickerFragment.java` (режим «Документы»).
 - Политика и возможности: `ActionPolicy.cs`, `ActionGate.cs`, `CapabilityRegistry.cs`, `AppSettings.cs`.
 - Настройки: `Core/Settings/*Page.cs` (страницы), реестр в `Contracts/Settings.cs`, голосовые команды в `Core/Settings/SettingsVoice.cs`.
 - Старт: `Core/AppBootstrap.cs`, `Core/AgentManager.cs`.

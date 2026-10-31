@@ -43,7 +43,7 @@ namespace Barabashka.Core
 
                 if (OpenOnAndroid(foundFile.FullName))
                     return Task.FromResult(ToolResult.Ok("Открываю документ: " + foundFile.Name));
-                return Task.FromResult(ToolResult.Fail("Не удалось открыть документ «" + foundFile.Name + "» на телефоне."));
+                return Task.FromResult(ToolResult.Fail("Не удалось открыть «" + foundFile.Name + "»: на телефоне нет программы для файлов этого типа или она отказала."));
             }
             catch (Exception ex)
             {
@@ -51,28 +51,30 @@ namespace Barabashka.Core
             }
         }
 
-        // Внимание: на Android 7 и новее открытие по file:// запрещено системой. Для надёжной работы нужен FileProvider
-        // (отдельная задача). Пока при отказе системы честно сообщаем, что не открылось.
+        // Файл отдаётся просмотрщику через собственный провайдер (BarabashkaDocsProvider): с Android 7 адрес file:// запрещён.
         private static bool OpenOnAndroid(string filePath)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             try
             {
-                using (var intent = new AndroidJavaObject("android.content.Intent", "android.intent.action.VIEW"))
                 using (var uriClass = new AndroidJavaClass("android.net.Uri"))
-                using (var file = new AndroidJavaObject("java.io.File", filePath))
-                using (var uri = uriClass.CallStatic<AndroidJavaObject>("fromFile", file))
+                using (var intent = new AndroidJavaObject("android.content.Intent", "android.intent.action.VIEW"))
                 using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
                 using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
                 {
-                    intent.Call<AndroidJavaObject>("setDataAndType", uri, DocsStore.MimeType(Path.GetExtension(filePath)));
-                    intent.Call<AndroidJavaObject>("addFlags", 0x10000001); // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
-                    activity.Call("startActivity", intent);
-                    return true;
+                    string encoded = uriClass.CallStatic<string>("encode", filePath);
+                    using (var uri = uriClass.CallStatic<AndroidJavaObject>("parse", "content://com.barabashka.docs/doc?path=" + encoded))
+                    {
+                        intent.Call<AndroidJavaObject>("setDataAndType", uri, DocsStore.MimeType(Path.GetExtension(filePath)));
+                        intent.Call<AndroidJavaObject>("addFlags", 0x10000001); // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
+                        activity.Call("startActivity", intent);
+                        return true;
+                    }
                 }
             }
             catch (Exception ex)
             {
+                // Чаще всего на телефоне нет программы для этого типа файлов.
                 Debug.LogWarning("[Docs] Не удалось открыть документ: " + ex.Message);
                 return false;
             }

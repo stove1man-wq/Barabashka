@@ -20,6 +20,11 @@ namespace Barabashka.Media
         private const string PluginClass = "com.barabashka.MediaPickerFragment";
         private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
 
+        /// <summary>Типы документов через запятую: окно «Документы» (ACTION_OPEN_DOCUMENT) вместо общего списка «Недавние».</summary>
+        private const string DocumentMimes =
+            "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
+            "application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain";
+
         private TaskCompletionSource<IReadOnlyList<MediaItem>> _pending;
 
         /// <summary>Каталог для проверки на компьютере.</summary>
@@ -35,7 +40,7 @@ namespace Barabashka.Media
 
 #if UNITY_ANDROID && !UNITY_EDITOR
             _pending = new TaskCompletionSource<IReadOnlyList<MediaItem>>(TaskCreationOptions.RunContinuationsAsynchronously);
-            string mime = kind == MediaKind.Image ? "image/*" : kind == MediaKind.Video ? "video/*" : "*/*";
+            string mime = kind == MediaKind.Image ? "image/*" : kind == MediaKind.Video ? "video/*" : DocumentMimes;
             try
             {
                 using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))

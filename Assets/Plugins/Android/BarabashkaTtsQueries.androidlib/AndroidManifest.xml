@@ -10,6 +10,14 @@
     <uses-permission android:name="android.permission.SEND_SMS" />
     <!-- Без этого Google Play скрыл бы приложение на планшетах без телефонного модуля. -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- Отдаёт просмотрщикам документы из папки документов приложения (открытие PDF, Word и т.п.). -->
+    <application>
+        <provider
+            android:name="com.barabashka.BarabashkaDocsProvider"
+            android:authorities="com.barabashka.docs"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
