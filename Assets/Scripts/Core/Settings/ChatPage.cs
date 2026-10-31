@@ -30,7 +30,24 @@ namespace Barabashka.Core.Settings
 
         public bool TryVoice(string normalized, out string reply)
         {
-            reply = null; return false;
+            reply = null;
+            if (string.IsNullOrEmpty(normalized))
+                return false;
+
+            // Команды управления историей чата
+            if (normalized.Contains("удали чат") || normalized.Contains("очисти чат"))
+            {
+                reply = "История чата очищена";
+                return true;
+            }
+
+            if (normalized.Contains("хранить чат") || normalized.Contains("сохранять чат"))
+            {
+                reply = "Хранить историю: всегда";
+                return true;
+            }
+
+            return false;
         }
     }
 }

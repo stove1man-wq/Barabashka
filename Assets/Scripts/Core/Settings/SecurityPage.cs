@@ -23,7 +23,24 @@ namespace Barabashka.Core.Settings
 
         public bool TryVoice(string normalized, out string reply)
         {
-            reply = null; return false;
+            reply = null;
+            if (string.IsNullOrEmpty(normalized))
+                return false;
+
+            // Команды управления действиями агента
+            if (normalized.Contains("действия агента") || normalized.Contains("режим действий"))
+            {
+                reply = "Режим действий агента: вручную";
+                return true;
+            }
+
+            if (normalized.Contains("включи звонки") || normalized.Contains("разрешить звонки"))
+            {
+                reply = "Разрешены звонки";
+                return true;
+            }
+
+            return false;
         }
     }
 }

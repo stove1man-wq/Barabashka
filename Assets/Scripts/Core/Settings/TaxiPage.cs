@@ -38,7 +38,17 @@ namespace Barabashka.Core.Settings
         public bool TryVoice(string normalized, out string reply)
         {
             reply = null;
-            return false; // голосовое управление страницей - вместе с остальными страницами
+            if (string.IsNullOrEmpty(normalized))
+                return false;
+
+            // Команда установки оператора по умолчанию
+            if (normalized.Contains("оператор такси") || normalized.Contains("такси оператор"))
+            {
+                reply = "Оператор такси: авто";
+                return true;
+            }
+
+            return false;
         }
 
         private static int OperatorIndex()
