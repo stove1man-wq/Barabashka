@@ -8,10 +8,11 @@ using UnityEngine;
 public class LlmProfile
 {
     public string name;
-    public string kind;     // "ollama", "openai" или "device" (модель на самом устройстве, model - путь к файлу)
+    public string kind;     // "ollama", "openai", "gigachat" или "device" (модель на самом устройстве, model - путь к файлу)
     public string url;      // для openai - адрес до /v1, например https://openrouter.ai/api/v1
     public string model;
     public string apiKey;
+    public string project;  // ID каталога Яндекса для YandexGPT
 
     public bool IsDevice
     {
@@ -22,6 +23,9 @@ public class LlmProfile
     {
         get { return string.Equals(kind, "openai", StringComparison.OrdinalIgnoreCase); }
     }
+
+    public bool IsGigaChat { get { return string.Equals(kind, "gigachat", StringComparison.OrdinalIgnoreCase); } }
+    public bool IsYandexGpt { get { return IsOpenAi && !string.IsNullOrEmpty(project); } }
 }
 
 /// <summary>
@@ -56,6 +60,12 @@ public static class LlmProfiles
                 return true;
             case "groq":
                 preset = new Preset { Kind = "openai", Url = "https://api.groq.com/openai/v1", Model = "llama-3.3-70b-versatile" };
+                return true;
+            case "yandex":
+                preset = new Preset { Kind = "openai", Url = "https://llm.api.cloud.yandex.net/v1", Model = "gpt://{project}/yandexgpt/latest" };
+                return true;
+            case "gigachat":
+                preset = new Preset { Kind = "gigachat", Url = "https://gigachat.devices.sberbank.ru/api/v1", Model = "GigaChat" };
                 return true;
             default:
                 preset = default(Preset);
@@ -109,7 +119,7 @@ public static class LlmProfiles
         var stored = new List<LlmProfile>();
         foreach (LlmProfile p in items)
         {
-            var copy = new LlmProfile { name = p.name, kind = p.kind, url = p.url, model = p.model, apiKey = string.Empty };
+            var copy = new LlmProfile { name = p.name, kind = p.kind, url = p.url, model = p.model, apiKey = string.Empty, project = p.project };
             if (!string.IsNullOrEmpty(p.apiKey))
             {
                 if (!SecretStore.Set(SecretName(p.name), p.apiKey))
