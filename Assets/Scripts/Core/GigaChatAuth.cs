@@ -15,7 +15,14 @@ namespace Barabashka.Core
     {
         private static string _cachedToken;
         private static DateTime _tokenExpiry;
+        private static string _cachedFor;
         private static readonly object _lock = new object();
+
+        /// <summary>Забыть сохранённый токен (например, после ответа 401).</summary>
+        public static void Invalidate()
+        {
+            lock (_lock) { _cachedToken = null; }
+        }
 
         /// <summary>
         /// Получить токен для GigaChat API
@@ -24,8 +31,8 @@ namespace Barabashka.Core
         {
             lock (_lock)
             {
-                // Проверяем, не истек ли токен (с запасом 60 секунд)
-                if (!string.IsNullOrEmpty(_cachedToken) && DateTime.UtcNow < _tokenExpiry.Subtract(TimeSpan.FromSeconds(60)))
+                // Проверяем, не истек ли токен (с запасом 60 секунд) и тот ли это ключ
+                if (!string.IsNullOrEmpty(_cachedToken) && _cachedFor == apiKey && DateTime.UtcNow < _tokenExpiry.Subtract(TimeSpan.FromSeconds(60)))
                 {
                     return _cachedToken;
                 }
@@ -37,6 +44,7 @@ namespace Barabashka.Core
             lock (_lock)
             {
                 _cachedToken = token;
+                _cachedFor = apiKey;
                 _tokenExpiry = DateTime.UtcNow.AddMinutes(29); // Токен живёт 30 минут
             }
             
@@ -49,6 +57,10 @@ namespace Barabashka.Core
             
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
+                CertificateHandler handler = SberTls.CreateHandler();
+                if (handler == null) throw new LlmException(SberTls.MissingMessage, false);
+                request.certificateHandler = handler;
+
                 // Устанавливаем заголовки
                 // Ключ уже в Base64, не кодируем повторно
                 request.SetRequestHeader("Authorization", $"Basic {apiKey}");
@@ -76,7 +88,9 @@ namespace Barabashka.Core
                 // Обрабатываем результат
                 if (request.result != UnityWebRequest.Result.Success)
                 {
-                    throw new Exception($"Ошибка получения токена: {request.error}");
+                    if (request.responseCode == 401 || request.responseCode == 403)
+                        throw new LlmException("ключ GigaChat не принят (" + request.responseCode + ")", false);
+                    throw new LlmException("GigaChat: не удалось получить токен (" + request.error + ")", true);
                 }
 
                 string responseText = request.downloadHandler.text;

@@ -98,12 +98,14 @@ public sealed class LlmClient
         if (profile.IsDevice) return await CallDeviceAsync(profile, deviceSystem ?? system, history, userText, jsonMode, ct);
 
         string baseUrl = (profile.url ?? string.Empty).Trim().TrimEnd('/');
-        bool openAi = profile.IsOpenAi;
+        bool openAi = profile.IsOpenAi || profile.IsGigaChat;
         string endpoint = baseUrl + (openAi ? "/chat/completions" : "/api/chat");
         string messages = BuildMessages(system, history, userText);
+        string gigaToken = profile.IsGigaChat ? await GetGigaTokenAsync(profile, ct) : null;
+        string modelName = (profile.model ?? string.Empty).Replace("{project}", profile.project ?? string.Empty);
 
         var body = new StringBuilder();
-        body.Append("{\"model\":").Append(MiniJson.Quote(profile.model));
+        body.Append("{\"model\":").Append(MiniJson.Quote(modelName));
         body.Append(",\"stream\":false");
         if (openAi)
         {
@@ -122,8 +124,17 @@ public sealed class LlmClient
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body.ToString()));
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            if (openAi && !string.IsNullOrEmpty(profile.apiKey))
+            if (profile.IsGigaChat)
+            {
+                CertificateHandler handler = SberTls.CreateHandler();
+                if (handler == null) throw new LlmException(SberTls.MissingMessage, false);
+                request.certificateHandler = handler;
+                request.SetRequestHeader("Authorization", "Bearer " + gigaToken);
+            }
+            else if (openAi && !string.IsNullOrEmpty(profile.apiKey))
                 request.SetRequestHeader("Authorization", "Bearer " + profile.apiKey);
+            if (openAi && !string.IsNullOrEmpty(profile.project))
+                request.SetRequestHeader("OpenAI-Project", profile.project);
             request.timeout = timeoutSec;
 
             var done = new TaskCompletionSource<bool>();
@@ -141,7 +152,10 @@ public sealed class LlmClient
             ct.ThrowIfCancellationRequested();
 
             if (request.result != UnityWebRequest.Result.Success)
+            {
+                if (profile.IsGigaChat && request.responseCode == 401) Barabashka.Core.GigaChatAuth.Invalidate();
                 throw MapError(profile, request);
+            }
 
             string content;
             try
@@ -167,6 +181,19 @@ public sealed class LlmClient
             if (string.IsNullOrWhiteSpace(content))
                 throw new LlmException("пустой ответ модели", false);
             return content;
+        }
+    }
+
+    private static async Task<string> GetGigaTokenAsync(LlmProfile profile, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(profile.apiKey)) throw new LlmException("не задан ключ GigaChat", false);
+        try { return await Barabashka.Core.GigaChatAuth.GetTokenAsync(profile.apiKey, ct); }
+        catch (OperationCanceledException) { throw; }
+        catch (LlmException) { throw; }
+        catch (Exception ex)
+        {
+            string m = ex.Message ?? string.Empty;
+            throw new LlmException("GigaChat: " + (m.Length > 120 ? m.Substring(0, 120) : m), true);
         }
     }
 
@@ -229,7 +256,12 @@ public sealed class LlmClient
     {
         long code = request.responseCode;
         if (request.result == UnityWebRequest.Result.ConnectionError)
-            return new LlmException("нет связи с " + profile.url + " (" + request.error + ")", true);
+        {
+            string err = request.error ?? string.Empty;
+            if (profile.IsGigaChat && (err.IndexOf("SSL", StringComparison.OrdinalIgnoreCase) >= 0 || err.IndexOf("cert", StringComparison.OrdinalIgnoreCase) >= 0))
+                return new LlmException("GigaChat: сертификат сервера не принят, проверьте файлы в Assets/Resources/certs (" + err + ")", false);
+            return new LlmException("нет связи с " + profile.url + " (" + err + ")", true);
+        }
 
         if (code == 401 || code == 403)
             return new LlmException("ключ не принят (" + code + "), проверьте: /llm ключ " + profile.name + " …", false);
